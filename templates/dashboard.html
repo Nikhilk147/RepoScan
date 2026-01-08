@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git Assistant - Workspace</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.0/split.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { background-color: #050505; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f1117; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* Glassmorphism */
+        .glass-panel { background: rgba(20, 20, 25, 0.8); backdrop-filter: blur(12px); border-right: 1px solid rgba(255,255,255,0.05); }
+
+        /* Split.js Gutter Styles */
+        .gutter {
+            background-color: #1f2937;
+            background-repeat: no-repeat;
+            background-position: 50%;
+            cursor: col-resize;
+            transition: background-color 0.2s;
+        }
+        .gutter:hover { background-color: #8b5cf6; } /* Purple on hover */
+
+        .hidden { display: none !important; }
+
+        /* Sidebar Transition */
+        #sidebar { transition: margin-left 0.3s ease-in-out; }
+        .sidebar-collapsed { margin-left: -16rem; }
+    </style>
+</head>
+<body class="h-screen w-full flex overflow-hidden">
+
+    <aside id="sidebar" class="w-64 glass-panel flex flex-col z-30 shrink-0 h-full border-r border-white/5">
+        <div class="h-14 border-b border-white/5 flex items-center px-4 justify-between">
+            <div class="flex items-center gap-2">
+                <div class="w-5 h-5 bg-gradient-to-tr from-blue-500 to-purple-500 rounded"></div>
+                <span class="font-bold text-sm tracking-wide">Git Assistant</span>
+            </div>
+            <button onclick="toggleSidebar()" class="text-gray-400 hover:text-white">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
+            </button>
+        </div>
+
+        <div class="p-3">
+            <button onclick="showEmptyState()" class="w-full flex items-center gap-2 px-3 py-2 bg-purple-600/20 text-purple-300 rounded-lg text-xs font-semibold hover:bg-purple-600/30 transition border border-purple-500/20">
+                <span>+</span> New Repository
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-3 space-y-1" id="history-list">
+            <div class="text-xs text-gray-600 text-center mt-4">Loading history...</div>
+        </div>
+
+        <div class="p-4 border-t border-white/5">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-gray-700 bg-cover bg-center" style="background-image: url('{{ user.user_metadata.avatar_url }}')"></div>
+                <div class="flex flex-col">
+                    <span class="text-xs font-medium text-gray-300">{{ user.user_metadata.user_name }}</span>
+                    <a href="/logout" class="text-[10px] text-gray-500 hover:text-white text-left transition">Log out</a>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex-1 relative bg-black flex flex-col h-full overflow-hidden">
+
+        <div class="absolute top-4 left-4 z-50">
+            <button id="open-sidebar-btn" onclick="toggleSidebar()" class="hidden p-2 bg-gray-800 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 shadow-lg border border-white/10">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+        </div>
+
+        <div id="view-empty" class="absolute inset-0 z-40 bg-black flex flex-col items-center justify-center p-6 transition-opacity duration-300">
+            <div class="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-[#050505] to-[#050505] pointer-events-none"></div>
+
+            <h1 class="text-3xl font-bold mb-2 relative z-10">What shall we build?</h1>
+            <p class="text-gray-500 mb-8 text-sm relative z-10">Link a GitHub repository to begin analysis.</p>
+
+            <div class="w-full max-w-lg relative z-10">
+                <input id="repo-input" type="text" placeholder="https://github.com/username/repository"
+                    class="w-full bg-[#13141C] border border-white/10 rounded-xl px-5 py-4 text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition shadow-2xl text-white placeholder-gray-600">
+                <button onclick="startAnalysis()" class="absolute right-2 top-2 bottom-2 bg-white/10 hover:bg-white/20 text-white px-4 rounded-lg text-xs font-medium transition">
+                    Analyze &rarr;
+                </button>
+            </div>
+
+            <div id="loading-indicator" class="hidden mt-8 flex flex-col items-center">
+                <div class="w-8 h-8 rounded-full border-2 border-purple-500/30 border-t-purple-500 animate-spin mb-3"></div>
+                <span class="text-xs text-purple-400">Processing Graph...</span>
+            </div>
+        </div>
+
+        <div id="view-workspace" class="hidden w-full h-full flex flex-row">
+
+            <div id="pane-chat" class="h-full flex flex-col min-w-[300px] bg-[#050505]">
+                <div class="h-14 border-b border-white/5 flex items-center px-6 justify-between bg-black/20 backdrop-blur shrink-0">
+                    <span id="active-repo-name" class="font-mono text-sm text-gray-300 truncate">...</span>
+                    <span class="text-[10px] bg-green-500/10 text-green-400 px-2 py-0.5 rounded border border-green-500/20 whitespace-nowrap">Live</span>
+                </div>
+
+                <div id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-6"></div>
+
+                <div class="p-4 border-t border-white/10 bg-[#0B0C10] shrink-0">
+                    <div class="flex gap-2">
+                        <input id="chat-input" type="text" placeholder="Ask about the code..."
+                            class="flex-1 bg-[#13141C] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-purple-500 text-white placeholder-gray-600"
+                            onkeypress="if(event.key === 'Enter') sendMessage()">
+                        <button onclick="sendMessage()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 rounded-lg transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="pane-graph" class="h-full bg-black/50 relative overflow-hidden min-w-[300px]">
+                <div class="absolute top-4 right-4 z-20 pointer-events-none text-right">
+                    <h2 class="text-lg font-bold text-white">Graph View</h2>
+                    <p class="text-[10px] text-gray-500">Interactive Knowledge Base</p>
+                </div>
+                <div id="d3-container" class="w-full h-full"></div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        let currentSessionId = null;
+        let splitInstance = null; // To store the Split.js instance
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSessions();
+            initSplit(); // Initialize the draggable divider
+        });
+
+        // --- UI: SPLIT & SIDEBAR LOGIC ---
+
+        function initSplit() {
+            // Creates the draggable boundary between #pane-chat and #pane-graph
+            splitInstance = Split(['#pane-chat', '#pane-graph'], {
+                sizes: [40, 60], // Initial percentage width (40% Chat, 60% Graph)
+                minSize: 300,    // Minimum width in pixels
+                gutterSize: 8,   // Thickness of the drag handle
+                cursor: 'col-resize'
+            });
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const openBtn = document.getElementById('open-sidebar-btn');
+
+            sidebar.classList.toggle('sidebar-collapsed');
+
+            // Show/Hide the floating open button
+            if (sidebar.classList.contains('sidebar-collapsed')) {
+                openBtn.classList.remove('hidden');
+            } else {
+                openBtn.classList.add('hidden');
+            }
+        }
+
+        function switchView(viewName) {
+            const emptyView = document.getElementById('view-empty');
+            const workspaceView = document.getElementById('view-workspace');
+
+            if (viewName === 'workspace') {
+                emptyView.classList.add('hidden');
+                workspaceView.classList.remove('hidden');
+            } else {
+                emptyView.classList.remove('hidden');
+                workspaceView.classList.add('hidden');
+            }
+        }
+
+        // --- DATA LOGIC ---
+
+        async function startAnalysis() {
+            const url = document.getElementById('repo-input').value;
+            if (!url) return;
+
+            // Show Loading Indicator
+            document.getElementById('loading-indicator').classList.remove('hidden');
+
+            try {
+                const res = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+
+                if (!res.ok) throw new Error("Server error");
+
+                const data = await res.json();
+
+                // Hide Loading
+                document.getElementById('loading-indicator').classList.add('hidden');
+
+                currentSessionId = data.session_id;
+                await loadSessions(); // Refresh Sidebar
+
+                // Set Up UI
+                document.getElementById('active-repo-name').innerText = url.split('/').pop();
+                document.getElementById('chat-container').innerHTML = '<div class="text-center text-gray-600 text-xs mt-10">Repo analyzed. Ask me anything!</div>';
+
+                // --- THE FIX IS HERE ---
+                // 1. Reveal the workspace FIRST so the div has dimensions
+                switchView('workspace');
+
+                // 2. Render Graph AFTER the view is visible
+                // We use setTimeout to give the browser 1 frame to calculate width/height
+                setTimeout(() => {
+                    if (data.graph) {
+                        renderGraph(data.graph);
+                    }
+                }, 100);
+
+            } catch (e) {
+                console.error(e);
+                alert("Error analyzing repository.");
+                document.getElementById('loading-indicator').classList.add('hidden');
+            }
+        }
+        async function loadChat(sessionId, title) {
+            currentSessionId = sessionId;
+            if(title) document.getElementById('active-repo-name').innerText = title;
+
+            // Switch to Workspace View
+            switchView('workspace');
+
+            const container = document.getElementById('chat-container');
+            container.innerHTML = '<div class="text-center text-gray-600 text-xs mt-10">Loading chat...</div>';
+
+            try {
+                const res = await fetch(`/api/sessions/${sessionId}`);
+                const data = await res.json();
+
+                // 1. Load Messages
+                container.innerHTML = '';
+                const messages = data.messages || [];
+                if(messages.length === 0) container.innerHTML = '<div class="text-center text-gray-600 text-xs mt-10">Start the conversation!</div>';
+                messages.forEach(msg => appendMessage(msg.sender, msg.content));
+
+                // 2. Load Graph (TODO: In a real app, you'd fetch the specific graph for this session)
+                // For now, we assume the user might want to re-analyze or we persist it differently.
+                // If you want to persist graphs, you need to store the JSON in the DB.
+                // For this demo, we'll clear the graph or leave the previous one.
+                document.getElementById('d3-container').innerHTML = '<div class="flex items-center justify-center h-full text-gray-600 text-xs">Graph data not persisted in demo (Re-analyze to view)</div>';
+
+            } catch (e) {
+                container.innerHTML = '<div class="text-center text-red-500 text-xs">Failed to load</div>';
+            }
+        }
+
+        // --- GRAPH RENDERER (D3.js) ---
+
+        function renderGraph(data) {
+            console.log("--- GRAPH DEBUG ---");
+            console.log("Nodes received:", data.nodes.length);
+            console.log("Links received:", data.links.length);
+
+            const container = document.getElementById('d3-container');
+            container.innerHTML = '';
+
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // 1. Setup Simulation
+            // We use data.links directly since backend ensures they are valid
+            const simulation = d3.forceSimulation(data.nodes)
+                .force("link", d3.forceLink(data.links).id(d => d.id).distance(60))
+                .force("charge", d3.forceManyBody().strength(-200))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collide", d3.forceCollide().radius(d => d.radius + 5));
+
+            const svg = d3.select("#d3-container").append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .call(d3.zoom().scaleExtent([0.1, 4]).on("zoom", (event) => {
+                    g.attr("transform", event.transform);
+                }));
+
+            const g = svg.append("g");
+
+            // 2. Draw Links (THE FIX: Direct Styles & No Group Inheritance)
+            const link = g.append("g")
+                .selectAll("line")
+                .data(data.links)
+                .join("line")
+                .attr("stroke", "#ffffff")      // Force Pure White
+                .attr("stroke-opacity", 0.5)    // 50% Opacity
+                .attr("stroke-width", 1.5);
+
+            // 3. Draw Nodes
+            const node = g.append("g")
+                .selectAll("circle")
+                .data(data.nodes)
+                .join("circle")
+                .attr("r", d => d.radius)
+                .attr("fill", d => {
+                    if (d.group === 'root') return '#8b5cf6'; // Purple
+                    if (d.group === 'folder') return '#3b82f6'; // Blue
+                    return '#4b5563'; // Gray
+                })
+                .attr("stroke", "#000")
+                .attr("stroke-width", 1.5)
+                .call(d3.drag()
+                    .on("start", (event, d) => {
+                        if (!event.active) simulation.alphaTarget(0.3).restart();
+                        d.fx = d.x; d.fy = d.y;
+                    })
+                    .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+                    .on("end", (event, d) => {
+                        if (!event.active) simulation.alphaTarget(0);
+                        d.fx = null; d.fy = null;
+                    })
+                );
+
+            // 4. Labels
+            const labels = g.append("g")
+                .selectAll("text")
+                .data(data.nodes)
+                .join("text")
+                .text(d => d.name)
+                .attr("font-size", "10px")
+                .attr("fill", "#d4d4d8")
+                .attr("dx", 12)
+                .attr("dy", 4)
+                .style("pointer-events", "none");
+
+            // 5. Tick Function
+            simulation.on("tick", () => {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node.attr("cx", d => d.x).attr("cy", d => d.y);
+                labels.attr("x", d => d.x).attr("y", d => d.y);
+            });
+
+            window.addEventListener('resize', () => {
+                 simulation.force("center", d3.forceCenter(container.clientWidth / 2, container.clientHeight / 2));
+                 simulation.alpha(0.3).restart();
+            });
+        }
+
+        // --- CHAT & HISTORY (Standard) ---
+
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text || !currentSessionId) return;
+
+            appendMessage('user', text);
+            input.value = '';
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: parseInt(currentSessionId), text: text })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    appendMessage('ai', `Error: ${JSON.stringify(data.detail)}`);
+                    return;
+                }
+                appendMessage('ai', data.response);
+            } catch (error) {
+                appendMessage('ai', "Error: Server unreachable.");
+            }
+        }
+
+        function appendMessage(sender, text) {
+            const container = document.getElementById('chat-container');
+            const safeSender = (sender || "").toLowerCase().trim();
+            const isAi = safeSender === 'ai' || safeSender === 'assistant';
+            const div = document.createElement('div');
+            div.className = `flex gap-3 ${isAi ? '' : 'flex-row-reverse'} animate-fade-in mb-4`;
+            div.innerHTML = `
+                <div class="w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-[10px] font-bold ${isAi ? 'bg-purple-600/50 text-purple-100' : 'bg-blue-600/50 text-blue-100'}">${isAi ? 'AI' : 'Me'}</div>
+                <div class="max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed shadow-md ${isAi ? 'bg-gray-800/50 text-gray-300 rounded-tl-none border border-white/5' : 'bg-blue-600/20 text-blue-100 rounded-tr-none border border-blue-500/20'}">${text}</div>
+            `;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function loadSessions() {
+            const res = await fetch('/api/sessions');
+            if (res.status === 401) { window.location.href = '/'; return; }
+            const data = await res.json();
+            const list = document.getElementById('history-list');
+            list.innerHTML = '';
+
+            const sessions = data.sessions || [];
+            if (sessions.length === 0) { list.innerHTML = '<div class="text-xs text-gray-600 text-center mt-4">No history yet</div>'; return; }
+
+            sessions.forEach(s => {
+                const item = document.createElement('div');
+                item.className = "px-3 py-2 text-gray-400 hover:bg-white/5 hover:text-white rounded cursor-pointer text-xs truncate transition";
+                item.innerText = s.title || "Untitled Chat";
+                item.onclick = () => loadChat(s.id, s.title);
+                list.appendChild(item);
+            });
+        }
+
+        function showEmptyState() {
+            currentSessionId = null;
+            // On mobile, collapse sidebar when starting new chat
+            if(window.innerWidth < 768) document.getElementById('sidebar').classList.add('sidebar-collapsed');
+            switchView('empty');
+        }
+    </script>
+</body>
+</html>

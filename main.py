@@ -1,0 +1,298 @@
+import os
+import json
+from fastapi import FastAPI, HTTPException, Request,Depends
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from dotenv import load_dotenv
+from starlette.routing import request_response
+from supabase import create_client, Client
+from pydantic import BaseModel
+import asyncio
+import redis.asyncio as aredis
+import uvicorn
+from ai_engine.graph import GraphBuilder
+from ai_engine.chat import generate_response
+from helper.commit import get_commit_sha,check_commit_id
+
+# Load environment variables
+load_dotenv()
+
+#TODO: Integrate with chat_response
+#TODO: MAke sure that messages are in the form Message Format
+#TODO : Integrate with Langgraph persistence format
+#TODO: include a commit id check if it doesn't match, initiate the graph building.Replace the existing graph
+
+
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_KEY")
+
+if not supabase_url or not supabase_key:
+    raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env file")
+
+
+app = FastAPI()
+supabase: Client = create_client(supabase_url, supabase_key)
+redis_aconn = aredis.from_url(os.getenv("REDIS_URL"))
+
+
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+MAIN_QUEUE = "repo_tasks"
+UNIQUE_SET = "repo_task:unique_set"
+MAX_QUEUE_SIZE = 100
+
+class RepoRequest(BaseModel):
+    url:str
+
+class ChatRequest(BaseModel):
+    session_id:int
+    text:str
+
+
+#---------------Auth (Cookie checking)-------------------------------------------
+
+async def get_current_user(request:Request):
+    """
+    Checks if the user hs a valid session token.
+    If yes,returns the User object
+    If no,returns None
+    :param request:
+    :return:
+    """
+
+    token = request.cookies.get("access_token","")
+
+    if not token:
+        return None
+    try:
+        user_response = supabase.auth.get_user(token)
+        return user_response.user
+    except Exception:
+        return None
+
+async def require_user(user = Depends(get_current_user)):
+    """
+    Stops the request if not valid user
+    :param user:
+    :return:
+    """
+    if not user:
+        raise HTTPException(status_code= 401,detail="Not authenticated")
+    return user
+# ----------------------------------------------redis---------------------------------------------
+
+async def push_to_redis(job_data):
+    current_size = await redis_aconn.llen(MAIN_QUEUE)
+    if current_size >= MAX_QUEUE_SIZE:
+        print(f"REJECTED: Queue is full: {current_size}")
+        return False
+    job_id = job_data["job_id"]
+    if await redis_aconn.sadd(UNIQUE_SET,job_id) ==0:
+        print(f"IGNORED: Job {job_id} already queued")
+        return False
+
+    payload = json.dumps(job_data)
+    await redis_aconn.lpush(MAIN_QUEUE,payload)
+    print("Queued successfully...")
+    return True
+
+
+
+# --- ROUTES ---
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request, user = Depends(get_current_user)):
+    """
+    Renders the Landing Page and passes config data.
+    """
+    if user:
+        return RedirectResponse("/dashboard")
+    return templates.TemplateResponse("index.html", {
+        "request": request
+    })
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def read_dashboard(request: Request, user = Depends(get_current_user)):
+    """
+    Renders the Dashboard and passes config data.
+    """
+    if not user:
+        return RedirectResponse(url ="/")
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request,
+        "user":user
+    })
+
+
+
+@app.get("/login/github")
+def login_github():
+    """
+        Generates the GitHub OAuth URL and redirects the user.
+    """
+
+    data = supabase.auth.sign_in_with_oauth({
+        "provider": "github",
+        "options": {
+            "redirect_to": "http://localhost:8000/auth/callback",
+            "scopes": "repo user"
+        }
+    })
+    return RedirectResponse(data.url)
+
+@app.get("/auth/callback")
+def auth_callback(code:str):
+    is_production = os.getenv("ENVIRONMENT") == "production"
+    try:
+
+        res = supabase.auth.exchange_code_for_session({"auth_code":code})
+        provider_token = res.session.provider_token
+        if provider_token:
+            supabase.table("profiles").update({
+                "github_token": provider_token
+            }).eq("id",res.user.id).execute()
+
+        redirect = RedirectResponse(url ="/dashboard")
+        redirect.set_cookie(
+            key="access_token",
+            value= res.session.access_token,
+            httponly=True,
+            samesite="lax",
+            path="/",
+            secure=False
+        )
+        return redirect
+    except Exception as e:
+        return HTMLResponse(f"Auth failed :{str(e)}",status_code=400)
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse(url="/")
+    response.delete_cookie("access_token")
+    return response
+
+#----------------------------Auth flow ------------------------------------
+
+@app.get("/api/sessions")
+async def get_sessions(user = Depends(require_user)):
+    """Fetch all the conversation from database"""
+
+    response = (supabase.table("chat_sessions").select("*").eq("user_id",user.id).order("created_at",desc=True).execute())
+    return {"sessions": response.data}
+
+@app.get("/api/sessions/{session_id}")
+async def get_session_history(session_id:int ,user = Depends(require_user)):
+    """Fetch the content of chat by session_id"""
+
+    profile_resp = supabase.table("profiles").select("github_token").eq("id", user.id).single().execute()
+    github_token = profile_resp.data.get('github_token')
+    latest_commit = check_commit_id(session_id = session_id,client = supabase,github_token=github_token,user = user)
+
+    if latest_commit:
+        pass
+    msgs = supabase.table("chat_messages").select("*").eq("session_id",session_id).order("created_at").execute()
+    return {"messages": msgs.data}
+
+
+
+
+
+
+@app.post("/api/analyze")
+async def analyze_repo(request: RepoRequest,user = Depends(require_user)):
+    """
+    1.Receive repo link
+    2. Creates an entry into repo & session table
+    3. Initialize the "Processing"(Cloning/Indexing)
+    :param request:
+    :param user:
+    :return:
+    """
+    profile_resp = supabase.table("profiles").select("github_token").eq("id",user.id).single().execute()
+    github_token = profile_resp.data.get('github_token')
+    commit_sha = get_commit_sha(repo_url = request.url,github_token=github_token)
+    repo_save = {
+
+        "n_name" : request.url.split("/")[-1].replace(".git",""),
+        "n_full_name": request.url,
+        "n_latest_commit_id": commit_sha
+    }
+    repo = supabase.rpc("upsert_repo_increment",repo_save).execute()
+    repo_id = repo.data["id"]
+    session_save = {
+        "user_id":user.id,
+        "repository_id": repo_id,
+        "title": request.url.split("/")[-1].replace(".git","")
+    }
+    session_res = supabase.table("chat_sessions").insert(session_save).execute()
+    session_id = session_res.data[0]["id"]
+
+
+    ##-------------------------------------------------------BLocking--------------------------------
+    job_id = f"{user.id}:{session_id}"
+    job_details = {
+        "job_id": job_id,
+        "url": request.url,
+        "session_id": session_id,
+        "github_token": github_token,
+        "user_id": user.id,
+    }
+
+    pubsub = redis_aconn.pubsub()
+    channel_name = f"job_status:{job_id}"
+    await pubsub.subscribe(channel_name)
+    try:
+        await push_to_redis(job_details)
+        print(f"Waiting for the job to complete:{job_id}")
+        async with asyncio.timeout(100):
+            async for message in pubsub.listen():
+                if message["type"] == "message":
+                    data = json.loads(message["data"])
+                    if data["status"] == "completed":
+                        graph_data = data["graph_data"]
+                        break
+                    if data["status"] == "failed":
+                        raise HTTPException(status_code = 500, detail = f"Job failed to execute :{job_id}")
+    except asyncio.TimeoutError:
+        print("Job timeout reached")
+        raise HTTPException(status_code = 504,detail=f"Analyze timeout(worker took too long)")
+    finally:
+        await pubsub.unsubscribe(channel_name)
+        await redis_aconn.aclose()
+
+
+
+    return {"session_id":session_id,
+            "message": "Repo analyzed successfully",
+            "graph": graph_data}
+
+@app.post("/api/chat")
+async def chat(request: ChatRequest,user = Depends(require_user)):
+    """Saves conversation into database"""
+
+    supabase.table("chat_messages").insert(
+        {
+            "session_id":request.session_id,
+            "sender": "User",
+            "content":request.text
+        }
+    ).execute()
+    ai_response = await generate_response(request.session_id,request.text)
+
+    supabase.table("chat_messages").insert({
+        "session_id": request.session_id,
+        "sender": "AI",
+        "content": ai_response
+
+    }).execute()
+    return {"response": ai_response}
+
+
+
+if __name__ == "__main__":
+
+
+    # Use host="0.0.0.0" to make it accessible if testing from other devices
+    uvicorn.run(app, port=8000)
