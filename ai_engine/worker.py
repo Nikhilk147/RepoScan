@@ -62,9 +62,10 @@ async def _async_processing_task_(job_details):
     github_token = job_details["github_token"]
     session_id = job_details["session_id"]
     try:
-        repo_details = await graph_builder.preprocessing_graph(repo_url=repo_url, github_token=github_token)
         commit_id = get_commit_sha(repo_url=repo_url, github_token=github_token)
-        await build_graph(repo_details,commit_id)
+        repo_details = await graph_builder.preprocessing_graph(repo_url=repo_url, github_token=github_token,commit_id=commit_id)
+
+        await build_graph(repo_detail = repo_details,commit_id = commit_id)
         graph_data = {"nodes":repo_details["nodes"],"links":repo_details["links"]}
         job_detail = {
             "status": "completed",
@@ -73,7 +74,7 @@ async def _async_processing_task_(job_details):
         redis_conn.publish(f"job_status:{job_details["job_id"]}",json.dumps(job_detail))
     except Exception as e:
         job_detail = {
-            "status": "failed",
+            "status": "failed"
         }
         redis_conn.publish(f"job_status:{job_details["job_id"]}", json.dumps(job_detail))
         full_traceback = traceback.format_exc()

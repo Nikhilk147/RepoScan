@@ -174,6 +174,23 @@ class Neo4jHandler:
                     d_path = imp
                     session.run(create_relation_query,mid=commit_node,s_path = s_path,d_path=d_path,commit_id=commit_id)
 
+    def search_files(self,repo_name,commit_id,files):
+        query = """
+                MATCH (r:Repository {name:$name}) - [:HAS_COMMIT]-> (com:Commit {commit_id : $commit_id})
+                MATCH (com) - [*] -> (f:File {path : $path})
+                MATCH (f) - [:IMPORTS] -> (n)
+                RETURN n.path
+            """
+        result = set()
+        with self.driver.session() as session:
+
+            for file_path in files:
+                response = session.run(query = query,name = repo_name,commit_id = commit_id,path = file_path)
+                for file in response.values():
+                    result.add(file)
+        return list(result)
+
+
 
 
     def delete_commit(self,repo_name,owner_name):

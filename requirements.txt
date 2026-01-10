@@ -13,4 +13,7 @@ langsmith
 neo4j
 qdrant-client
 sentence-transformers
-langchain-text-spitter
+langchain-text-splitters
+langchain_core
+langchain
+pydantic
