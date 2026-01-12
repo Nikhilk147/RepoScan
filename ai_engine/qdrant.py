@@ -67,6 +67,7 @@ chunker = get_chunk_code()
 def ingest_repo(commit_id,code_content,repo_name,path):
     chunks = chunker.split_text(code_content)
     embed_texts = embed_text(chunks)
+    points = []
     for idx, (chunk, embedding) in enumerate(zip(chunks, embed_texts)):
         payload = {
             "repo_name": repo_name,
@@ -76,6 +77,17 @@ def ingest_repo(commit_id,code_content,repo_name,path):
             "language": path.split(".")[-1],
             "chunk_index": idx
         }
+        point = models.PointStruct(
+            id = idx,
+            payload = payload,
+            vector = embedding
+        )
+        points.append(point)
+    qdrant_client.upsert(
+        collection_name = "repo_knowledge",
+        points = points
+    )
+
 def search_chunk(repo_name,commit_id,files,user_query,top_k = 20):
     chunks = []
     q_filter = models.Filter(

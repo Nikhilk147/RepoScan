@@ -181,7 +181,7 @@ class Neo4jHandler:
                 MATCH (f) - [:IMPORTS] -> (n)
                 RETURN n.path
             """
-        result = set()
+        result = set(files)
         with self.driver.session() as session:
 
             for file_path in files:
