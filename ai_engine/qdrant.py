@@ -20,8 +20,8 @@ qdrant_client = QdrantClient(":memory:")
 def get_chunk_code():
     return RecursiveCharacterTextSplitter(
         chunk_size = 800,
-        chunked_overlap = 150,
-        seperaors = [
+        chunk_overlap = 150,
+        separators = [
             "\nclass",
             "\ndef",
             "\nasync",

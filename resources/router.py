@@ -1,6 +1,6 @@
 from langchain.agents.structured_output import ToolStrategy
 
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 from pydantic import BaseModel,Field
 from typing import List, Optional,Literal
@@ -22,7 +22,7 @@ class RouterOutput(BaseModel):
 #     files: list[SelectedFile] = []
 #     answer: Optional[str] = None
 
-router_prompt = PromptTemplate.from_template(
+router_prompt = ChatPromptTemplate.from_messages(
     [
         ("system",
          """

@@ -10,9 +10,10 @@ from langchain_core.output_parsers import PydanticOutputParser
 from graph_db import Neo4jHandler
 from qdrant import search_chunk
 from resources.large_llm_prompt import large_lm_prompt
-from langchain_core.messages import SystemMessage
-from langgraph.graph import StateGraph, add_messages
+from langchain_core.messages import SystemMessage,HumanMessage
+from langgraph.graph import StateGraph, add_messages,START,END
 from langsmith import traceable
+from langchain.chat_models import init_chat_model
 #TODO: Build a RAG pipeline. It should take retrieve the structure(calls,imports and definitions) from neo4j.
 #TODO: Perform similarly search using Qdrant. Provide Neo4j output of similarity and query of user
 #TODO: Use persistence method on langgraph and integrate with supabase..If needed change the schema in supabase
@@ -21,15 +22,26 @@ neo4j_handler = Neo4jHandler()
 
 
 parser = PydanticOutputParser(pydantic_object = RouterOutput)
-router_llm = HuggingFaceEndpoint(
-    repo_id="google/flan-t5-large",
-    task="text2text-generation",
-    max_new_tokens=64,
-    temperature=0.01,
-    huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN")
+# router_llm = HuggingFaceEndpoint(
+#     repo_id="google/flan-t5-large",
+#     # task="text2text-generation",
+#     max_new_tokens=64,
+#     temperature=0.01,
+#     huggingfacehub_api_token=os.getenv("HUGGINGFACEHUB_API_TOKEN"),
+#     provider = "auto"
+# ).with_structured_output(parser)
+# llm_technical = ChatGroq(
+#     temperature = 0,
+#     model = "llama-3.1-8b-instant",
+#     api_key = os.getenv("GROQ_API_KEY")
+# )
+router_llm =init_chat_model(
+    "google/flan-t5-large",
+    model_provider="huggingface",
+    max_tokens=1024,
 ).with_structured_output(parser)
 
-llm_technical = ChatGroq(
+llm_technical = init_chat_model(
     temperature = 0,
     model = "llama-3.1-8b-instant",
     api_key = os.getenv("GROQ_API_KEY")
@@ -54,6 +66,11 @@ class RepoState(TypedDict):
     summary :str
     user_query :str
     final_answer :Optional[str]
+
+    #External Info
+    commit_id:str
+    repo_name:str
+    files_path:List[str]
 
 def keyword_similarity(query:str,text:str) -> float:
     query = set(query.lower().split())
@@ -145,7 +162,7 @@ def summarize_node(state:RepoState):
         "summary": summary
     }
 
-def planner_node(state:RepoState,files_paths:List[str]):
+def router_node(state:RepoState,):
     """
     Small llm:
     -classify the intent
@@ -153,12 +170,11 @@ def planner_node(state:RepoState,files_paths:List[str]):
     - selects files if technical
 
     :param state:
-    :param files_paths:
     :return:
     """
     prompt = router_prompt.invoke(
         {
-            "file_paths": files_paths,
+            "file_paths": state["files_path"],
             "query": state["user_query"]
         }
     )
@@ -172,33 +188,29 @@ def planner_node(state:RepoState,files_paths:List[str]):
     if result["intent"] == "general":
         state["final_answer"] = result.answer
 
-def neo4j_node(state:RepoState,repo_name:str,commit_id:str):
+def neo4j_node(state:RepoState):
     """
     Extracts dependencies from neo4j and adds in selected files.
     :param state:
-    :param repo_name:
-    :param commit_id:
     :return:
     """
     selected_files = state["selected_files"]
 
-    files = neo4j_handler.search_files(repo_name= repo_name,commit_id= commit_id,files = selected_files)
+    files = neo4j_handler.search_files(repo_name= state["repo_name"],commit_id= state["commit_id"],files = selected_files)
 
 
     state["selected_files"] = files
     return state
 
-def qdrant_node(state:RepoState,repo_name,commit_id):
+def qdrant_node(state:RepoState):
     """
     Performs similarity search in GitHub repo. Retrieves and reranks the chunks
     :param state:
-    :param repo_name:
-    :param commit_id:
     :return:
     """
 
-    hits = search_chunk(repo_name=repo_name,
-                        commit_id=commit_id,
+    hits = search_chunk(repo_name=state["repo_name"],
+                        commit_id=state["commit_id"],
                         files = state["selected_files"],
                         user_query=state["user_query"])
 
@@ -237,16 +249,51 @@ def answer_node(state:RepoState):
     :param state: 
     :return: 
     """
-    pass
+    state["messages"] = state["messages"] + [state["final_answer"]]
+    return {"messages": state["messages"]}
 
 ## ------------------------------------Build graph----------------------------------------------
 
-# builder = StateGraph(RepoState)
-#
-# builder.add_node("summarize",summarize_node)
-# builder
+##-----------------Nodes----------------
+builder = StateGraph(RepoState)
+
+builder.add_node("summarize",summarize_node)
+builder.add_node("router",router_node)
+builder.add_node("neo4j",neo4j_node)
+builder.add_node("qdrant",qdrant_node)
+builder.add_node("technical",technical_node)
+builder.add_node("general_answer",answer_node)
 
 
+#------------------Edges ----------------
+builder.add_edge(START,"router")
+builder.add_conditional_edges(
+    "router",
+    lambda s: s["intent"],
+    {
+        "general": "general_answer",
+        "technical": "neo4j"
+    }
+)
+builder.add_edge("neo4j","qdrant")
+builder.add_edge("qdrant","technical")
+builder.add_edge("technical",END)
+builder.add_edge("general_answer",END)
 
+graph = builder.compile()
+
+
+result = graph.invoke(
+    {
+        "messages" : [HumanMessage(content="Hi, how are you?")],
+        "repo_name": "HYDRAN",
+        "commit_id": "e69e6d2e3f727c968db4b4a80b45f81705f72fcc",
+        "files_path": [],
+        "user_query" : "Hi how are you",
+
+    }
+)
+
+print(result)
 
 

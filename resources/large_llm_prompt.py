@@ -1,9 +1,9 @@
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 
 
 
-large_lm_prompt = PromptTemplate.from_message(
+large_lm_prompt = ChatPromptTemplate.from_messages(
     [
     ("system",
         """
