@@ -231,12 +231,13 @@ def technical_node(state:RepoState):
     return {
         "messages": state["messages"] + [response]
     }
-def answer_node(state:RepoState)
+def answer_node(state:RepoState):
     """
     Returns the answer if the query was general
     :param state: 
     :return: 
     """
+    pass
 
 ## ------------------------------------Build graph----------------------------------------------
 
