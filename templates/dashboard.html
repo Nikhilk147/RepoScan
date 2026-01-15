@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Git Assistant - Workspace</title>
-
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.0/split.min.js"></script>
@@ -37,6 +39,55 @@
         /* Sidebar Transition */
         #sidebar { transition: margin-left 0.3s ease-in-out; }
         .sidebar-collapsed { margin-left: -16rem; }
+        /* Styling for Markdown Code Blocks */
+        .markdown-content pre {
+            background: #13141c;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .markdown-content code {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: #e2e8f0;
+        }
+        .markdown-content p { margin-bottom: 0.75rem; }
+        .markdown-content ul { list-style-type: disc; margin-left: 1.25rem; margin-bottom: 0.75rem; }
+        /* Container for parsed markdown */
+        .markdown-body {
+            word-wrap: break-word;
+        }
+
+        /* Code block styling */
+        .markdown-body pre {
+            background-color: #1a1b26 !important; /* Editor-like dark background */
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin: 0.75rem 0;
+            overflow-x: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .markdown-body code {
+            font-family: 'Fira Code', 'Cascadia Code', monospace;
+            font-size: 0.85rem;
+            background: transparent;
+        }
+
+        /* Inline code (like `main.py`) */
+        .markdown-body :not(pre) > code {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+            color: #f87171; /* Light red/pink for visibility */
+        }
+
+        /* Adjust paragraph and list spacing */
+        .markdown-body p { margin-bottom: 0.75rem; }
+        .markdown-body ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 0.75rem; }
+        .markdown-body ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 0.75rem; }
     </style>
 </head>
 <body class="h-screen w-full flex overflow-hidden">
@@ -386,14 +437,38 @@
             const container = document.getElementById('chat-container');
             const safeSender = (sender || "").toLowerCase().trim();
             const isAi = safeSender === 'ai' || safeSender === 'assistant';
+
+            // Configure marked to use highlight.js for code coloring
+            marked.setOptions({
+                highlight: function(code, lang) {
+                    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                    return hljs.highlight(code, { language }).value;
+                },
+                langPrefix: 'hljs language-'
+            });
+
+            // Parse text as Markdown if it's from the AI
+            const formattedText = isAi ? marked.parse(text) : text;
+
             const div = document.createElement('div');
             div.className = `flex gap-3 ${isAi ? '' : 'flex-row-reverse'} animate-fade-in mb-4`;
+
             div.innerHTML = `
                 <div class="w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-[10px] font-bold ${isAi ? 'bg-purple-600/50 text-purple-100' : 'bg-blue-600/50 text-blue-100'}">${isAi ? 'AI' : 'Me'}</div>
-                <div class="max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed shadow-md ${isAi ? 'bg-gray-800/50 text-gray-300 rounded-tl-none border border-white/5' : 'bg-blue-600/20 text-blue-100 rounded-tr-none border border-blue-500/20'}">${text}</div>
+                <div class="max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed shadow-md markdown-body ${isAi ? 'bg-gray-800/50 text-gray-300 rounded-tl-none border border-white/5' : 'bg-blue-600/20 text-blue-100 rounded-tr-none border border-blue-500/20'}">
+                    ${formattedText}
+                </div>
             `;
+
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
+
+            // Trigger highlighting for the newly added code blocks
+            if (isAi) {
+                div.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
         }
 
         async function loadSessions() {
