@@ -1,19 +1,19 @@
 import os
 from typing import TypedDict
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, AIMessage
 from langchain_huggingface import HuggingFaceEndpoint
 from langchain_groq import ChatGroq
 
 from resources.router import RouterOutput,router_prompt
 from typing import List, Optional,LiteralString,Annotated,Literal,Dict
 from langchain_core.output_parsers import PydanticOutputParser
-from graph_db import Neo4jHandler
-from qdrant import search_chunk
+from ai_engine.graph_db import Neo4jHandler
+from ai_engine.qdrant import search_chunk
 from resources.large_llm_prompt import large_lm_prompt
-from langchain_core.messages import SystemMessage,HumanMessage
+from langchain_core.messages import SystemMessage,HumanMessage,AIMessage
 from langgraph.graph import StateGraph, add_messages,START,END
 from langsmith import traceable
-from langchain.chat_models import init_chat_model
+from helper.checkpointer import SupabaseSaver
 #TODO: Build a RAG pipeline. It should take retrieve the structure(calls,imports and definitions) from neo4j.
 #TODO: Perform similarly search using Qdrant. Provide Neo4j output of similarity and query of user
 #TODO: Use persistence method on langgraph and integrate with supabase..If needed change the schema in supabase
@@ -35,25 +35,39 @@ parser = PydanticOutputParser(pydantic_object = RouterOutput)
 #     model = "llama-3.1-8b-instant",
 #     api_key = os.getenv("GROQ_API_KEY")
 # )
-router_llm =init_chat_model(
-    "google/flan-t5-large",
-    model_provider="huggingface",
-    max_tokens=1024,
-).with_structured_output(parser)
+# summarizer_llm = HuggingFaceEndpoint(
+#     repo_id="google/flan-t5-large",
+#     task="text2text-generation",
+#     temperature = 0,
+#     huggingfacehub_api_token=os.getenv(("HUGGINGFACE_API_TOKEN"))
+# )
 
-llm_technical = init_chat_model(
+# router_llm =init_chat_model(
+#     "Qwen/Qwen3-8B",
+#     model_provider="huggingface",
+#     max_tokens=1024,
+# ).with_structured_output(parser)
+
+llm_technical = ChatGroq(
     temperature = 0,
-    model = "llama-3.1-8b-instant",
+    model="llama-3.1-8b-instant",
+
     api_key = os.getenv("GROQ_API_KEY")
 )
-
-
-summarizer_llm = HuggingFaceEndpoint(
-    repo_id="google/flan-t5-large",
-    task="text2text-generation",
+summarizer_llm = ChatGroq(
     temperature = 0,
-    huggingfacehub_api_token=os.getenv(("HUGGINGFACE_API_TOKEN"))
+
+    model="llama-3.1-8b-instant",
+
+    api_key = os.getenv("GROQ_API_KEY")
 )
+router_llm = ChatGroq(
+    temperature = 0,
+
+    model="llama-3.1-8b-instant",
+
+    api_key = os.getenv("GROQ_API_KEY")
+).with_structured_output(RouterOutput)
 
 
 class RepoState(TypedDict):
@@ -94,10 +108,11 @@ def rerank_chunks(hits, query,selected_files,confidence_score,top_k = 8):
     :return:
     """
     reranked = []
+    print(hits.points)
 
-    for h in hits:
+    for h in hits.points:
         payload = h.payload
-        keyword_score = keyword_similarity(query = query,text = payload.text)
+        keyword_score = keyword_similarity(query = query,text = payload["text"])
         vector_score = h.score
         confidence_score = confidence_score
         if payload["path"] in selected_files:
@@ -111,7 +126,7 @@ def rerank_chunks(hits, query,selected_files,confidence_score,top_k = 8):
             0.20 * file_score +
             0.10 * keyword_score
         )
-        reranked.append((final_score,payload.text))
+        reranked.append((final_score,payload["text"]))
     reranked.sort(key= lambda x : x[0], reverse = True )
     return [text for _,text in reranked[:top_k]]
 
@@ -162,7 +177,7 @@ def summarize_node(state:RepoState):
         "summary": summary
     }
 
-def router_node(state:RepoState,):
+def router_node(state:RepoState):
     """
     Small llm:
     -classify the intent
@@ -179,14 +194,16 @@ def router_node(state:RepoState,):
         }
     )
     parsed = router_llm.invoke(prompt)
-    result = RouterOutput.parse_raw(parsed)
 
-    state["intent"] = result.intent
-    state["selected_files"] = result.files
-    state["planner_confidence"] = result.confidence
 
-    if result["intent"] == "general":
-        state["final_answer"] = result.answer
+    state["intent"] = parsed.intent
+    state["selected_files"] = parsed.files
+    state["planner_confidence"] = parsed.confidence
+
+    if parsed.intent == "general":
+        state["final_answer"] = parsed.answer
+    return state
+
 
 def neo4j_node(state:RepoState):
     """
@@ -241,7 +258,7 @@ def technical_node(state:RepoState):
     response = llm_technical.invoke(prompt).content
     state["final_answer"] = response
     return {
-        "messages": state["messages"] + [response]
+        "messages": state["messages"] + [HumanMessage(state["user_query"]), AIMessage(response)]
     }
 def answer_node(state:RepoState):
     """
@@ -249,9 +266,14 @@ def answer_node(state:RepoState):
     :param state: 
     :return: 
     """
-    state["messages"] = state["messages"] + [state["final_answer"]]
+    state["messages"] = state["messages"] + [HumanMessage(state["user_query"]),AIMessage(state["final_answer"])]
     return {"messages": state["messages"]}
-
+def router_func(state:RepoState):
+    print(state)
+    if state["intent"] == "general":
+        return "general_answer"
+    else:
+        return "technical"
 ## ------------------------------------Build graph----------------------------------------------
 
 ##-----------------Nodes----------------
@@ -269,9 +291,9 @@ builder.add_node("general_answer",answer_node)
 builder.add_edge(START,"router")
 builder.add_conditional_edges(
     "router",
-    lambda s: s["intent"],
+    router_func,
     {
-        "general": "general_answer",
+        "general_answer": "general_answer",
         "technical": "neo4j"
     }
 )
@@ -280,20 +302,7 @@ builder.add_edge("qdrant","technical")
 builder.add_edge("technical",END)
 builder.add_edge("general_answer",END)
 
-graph = builder.compile()
+graph = builder.compile(checkpointer = SupabaseSaver())
 
-
-result = graph.invoke(
-    {
-        "messages" : [HumanMessage(content="Hi, how are you?")],
-        "repo_name": "HYDRAN",
-        "commit_id": "e69e6d2e3f727c968db4b4a80b45f81705f72fcc",
-        "files_path": [],
-        "user_query" : "Hi how are you",
-
-    }
-)
-
-print(result)
 
 

@@ -14,7 +14,7 @@ embedding_model = SentenceTransformer(
 )
 
 # qdrant_client = QdrantClient(url = os.getenv("QDRANT_ENDPOINT") ,api_key = os.getenv("QDRANT_API_KEY") )
-qdrant_client = QdrantClient(":memory:")
+qdrant_client = QdrantClient(url="http://localhost:6333")
 
 
 def get_chunk_code():
@@ -39,18 +39,23 @@ def create_collection():
     if not qdrant_client.collection_exists("repo_knowledge"):
         qdrant_client.create_collection(
             collection_name = "repo_knowledge",
-            vectors_config = models.VectorsConfig(
+            vectors_config = models.VectorParams(
                 size = 384,
                 distance = models.Distance.COSINE
             ),
-            hnsw_config = models.HnswConfig(
+            hnsw_config = models.HnswConfigDiff(
                 m= 16,
                 ef_construct=200,
                 full_scan_threshold = 10000,
                 on_disk  = True
             ),
-            optimizers_config= models.OptimizersConfig(
-                indexing_threshold=20000
+            optimizers_config= models.OptimizersConfigDiff(
+                indexing_threshold=20000,
+                deleted_threshold=0.2,
+                vacuum_min_vector_number= 1000,
+                default_segment_number = 0,
+                flush_interval_sec = 10
+
             )
         )
 
@@ -117,6 +122,7 @@ def search_chunk(repo_name,commit_id,files,user_query,top_k = 20):
         ),
         limit = top_k
     )
+    print(f"Search chunk function in qdrant output: {output}")
 
     return output
 

@@ -182,18 +182,61 @@ async def get_sessions(user = Depends(require_user)):
     response = (supabase.table("chat_sessions").select("*").eq("user_id",user.id).order("created_at",desc=True).execute())
     return {"sessions": response.data}
 
+
+
 @app.get("/api/sessions/{session_id}")
 async def get_session_history(session_id:int ,user = Depends(require_user)):
     """Fetch the content of chat by session_id"""
 
     profile_resp = supabase.table("profiles").select("github_token").eq("id", user.id).single().execute()
     github_token = profile_resp.data.get('github_token')
-    latest_commit = check_commit_id(session_id = session_id,client = supabase,github_token=github_token,user = user)
+    commit_info = check_commit_id(session_id = session_id,client = supabase,github_token=github_token)
 
-    if latest_commit:
-        pass
-    msgs = supabase.table("chat_messages").select("*").eq("session_id",session_id).order("created_at").execute()
-    return {"messages": msgs.data}
+    if not commit_info["is_latest"]:
+        ##-------------------------------------------------------BLocking--------------------------------
+        job_id = f"{user.id}:{session_id}"
+
+        job_details = {
+            "job_id": job_id,
+            "url": commit_info["repo_url"],
+            "session_id": session_id,
+            "github_token": github_token,
+            "user_id": user.id,
+        }
+
+        pubsub = redis_aconn.pubsub()
+        channel_name = f"job_status:{job_id}"
+        await pubsub.subscribe(channel_name)
+        try:
+            await push_to_redis(job_details)
+            print(f"Waiting for the job to complete:{job_id}")
+            async with asyncio.timeout(1000):
+                async for message in pubsub.listen():
+                    if message["type"] == "message":
+                        data = json.loads(message["data"])
+                        if data["status"] == "completed":
+                            graph_data = data["graph_data"]
+                            break
+                        if data["status"] == "failed":
+                            raise HTTPException(status_code=500, detail=f"Job failed to execute :{job_id}")
+            supabase.table("repositories").update({"latest_commit_id":commit_info["latest_commit"]})
+        except asyncio.TimeoutError:
+            print("Job timeout reached")
+            raise HTTPException(status_code=504, detail=f"Analyze timeout(worker took too long)")
+        finally:
+            await pubsub.unsubscribe(channel_name)
+            await redis_aconn.aclose()
+
+    db_row = supabase.table("chat_messages").select("*").eq("session_id",session_id).execute()
+    checkpoint_type = db_row.get("checkpoint_type")
+    state_bytes = base64.b64decode(encoded_state)
+    state = graph.checkpointer.serde.loads_typed((checkpoint_type, state_bytes))
+    print(state)
+    msgs =state.get("messages")
+    if len(msgs.data) > 0:
+        return {"messages": msgs}
+    else:
+        return {"messages": None}
 
 
 
@@ -228,40 +271,42 @@ async def analyze_repo(request: RepoRequest,user = Depends(require_user)):
     }
     session_res = supabase.table("chat_sessions").insert(session_save).execute()
     session_id = session_res.data[0]["id"]
+    if repo.data["new_or_updated"]:
 
+        ##-------------------------------------------------------BLocking--------------------------------
+        job_id = f"{user.id}:{session_id}"
+        job_details = {
+            "job_id": job_id,
+            "url": request.url,
+            "session_id": session_id,
+            "github_token": github_token,
+            "user_id": user.id,
+        }
 
-    ##-------------------------------------------------------BLocking--------------------------------
-    job_id = f"{user.id}:{session_id}"
-    job_details = {
-        "job_id": job_id,
-        "url": request.url,
-        "session_id": session_id,
-        "github_token": github_token,
-        "user_id": user.id,
-    }
-
-    pubsub = redis_aconn.pubsub()
-    channel_name = f"job_status:{job_id}"
-    await pubsub.subscribe(channel_name)
-    try:
-        await push_to_redis(job_details)
-        print(f"Waiting for the job to complete:{job_id}")
-        async with asyncio.timeout(100):
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    data = json.loads(message["data"])
-                    if data["status"] == "completed":
-                        graph_data = data["graph_data"]
-                        break
-                    if data["status"] == "failed":
-                        raise HTTPException(status_code = 500, detail = f"Job failed to execute :{job_id}")
-    except asyncio.TimeoutError:
-        print("Job timeout reached")
-        raise HTTPException(status_code = 504,detail=f"Analyze timeout(worker took too long)")
-    finally:
-        await pubsub.unsubscribe(channel_name)
-        await redis_aconn.aclose()
-
+        pubsub = redis_aconn.pubsub()
+        channel_name = f"job_status:{job_id}"
+        await pubsub.subscribe(channel_name)
+        try:
+            await push_to_redis(job_details)
+            print(f"Waiting for the job to complete:{job_id}")
+            async with asyncio.timeout(1000):
+                async for message in pubsub.listen():
+                    if message["type"] == "message":
+                        data = json.loads(message["data"])
+                        if data["status"] == "completed":
+                            graph_data = data["graph_data"]
+                            break
+                        if data["status"] == "failed":
+                            raise HTTPException(status_code = 500, detail = f"Job failed to execute :{job_id}")
+        except asyncio.TimeoutError:
+            print("Job timeout reached")
+            raise HTTPException(status_code = 504,detail=f"Analyze timeout(worker took too long)")
+        finally:
+            await pubsub.unsubscribe(channel_name)
+            await redis_aconn.aclose()
+    else:
+        graph_builder = GraphBuilder()
+        graph_data = await graph_builder.build_repo_graph_frontend(request.url,github_token)
 
 
     return {"session_id":session_id,
@@ -272,22 +317,9 @@ async def analyze_repo(request: RepoRequest,user = Depends(require_user)):
 async def chat(request: ChatRequest,user = Depends(require_user)):
     """Saves conversation into database"""
 
-    supabase.table("chat_messages").insert(
-        {
-            "session_id":request.session_id,
-            "sender": "User",
-            "content":request.text
-        }
-    ).execute()
     ai_response = await generate_response(request.session_id,request.text)
 
-    supabase.table("chat_messages").insert({
-        "session_id": request.session_id,
-        "sender": "AI",
-        "content": ai_response
-
-    }).execute()
-    return {"response": ai_response}
+    return {"response": str(ai_response)}
 
 
 

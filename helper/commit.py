@@ -36,20 +36,27 @@ def get_commit_sha(repo_url,github_token):
     return commit_sha
 
 
-def check_commit_id(session_id,client, github_token ,user):
-
-    repo_response = client.table("chat_sessions").select("repository_id").eq("user_id", user.id).eq("id",session_id).single().execute()
-
-    repo_id = repo_response.data["repository_id"]
-    repo = client.table("repositories").select("full_name","latest_commit_id").eq("id",repo_id).single().execute()
+def check_commit_id(session_id,client, github_token ):
+    repo_id = client.table("chat_sessions").select("repository_id").eq("id",session_id).single().execute()
+    repo = client.table("repositories").select("full_name","latest_commit_id").eq("id",repo_id.data["repository_id"]).single().execute()
     repo_url = repo.data["full_name"]
     db_sha = repo.data["latest_commit_id"]
     print(db_sha)
     github_sha = get_commit_sha(repo_url, github_token=github_token)
+
     if db_sha == github_sha:
-        return True
+        response_json = {
+            "is_latest": True
+        }
+        return response_json
     else:
-        return False
+        response_json = {
+            "is_latest": False,
+            "repo_url" : repo_url,
+            "latest_commit": github_sha
+
+        }
+        return response_json
 
 
 

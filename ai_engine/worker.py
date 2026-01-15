@@ -98,7 +98,7 @@ def cleanup_resources(redis_conn, job_details, reason="Finished"):
     print(f"removing job from the queue:{job_id}")
 
     pipe = redis_conn.pipeline()
-    pipe.delete(f"{QUEUE_PROCESSING}:{job_id}")
+    pipe.lrem(QUEUE_PROCESSING,0,json.dumps(job_details))
     pipe.srem(UNIQUE_SET,job_id)
 
     pipe.execute()
@@ -174,6 +174,7 @@ async def start_worker():
                     }
                     print(f"started: {job_id} (Active:{len(running_processes)}")
             except Exception as e:
+                traceback.print_exc()
                 print(f"Encountered error while starting to process job in worker.py as {e}")
 
 

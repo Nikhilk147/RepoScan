@@ -186,8 +186,11 @@ class Neo4jHandler:
 
             for file_path in files:
                 response = session.run(query = query,name = repo_name,commit_id = commit_id,path = file_path)
-                for file in response.values():
-                    result.add(file)
+
+                for file in response:
+                    file_path = file["n.path"]
+                    if file_path:
+                        result.add(file_path)
         return list(result)
 
 

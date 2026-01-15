@@ -2,14 +2,15 @@ import ast
 import json
 import ast
 import uuid
-
+import os
 import httpx
 import requests
 import asyncio
 from qdrant_client import QdrantClient,models
-from qdrant import create_collection,get_chunk_code,embed_text
-qdrant_client = QdrantClient(":memory:")
-
+from ai_engine.qdrant import create_collection,get_chunk_code,embed_text
+qdrant_client = QdrantClient(url="http://localhost:6333")
+import redis
+redis_conn = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
 #TODO: Integrate with frontend
 #TODO: Find a possible way to integrate with Neo4j
@@ -113,58 +114,58 @@ class GraphBuilder:
 
 
 
-    # async def build_repo_graph_frontend(self,repo_url:str,github_token:str):
-    #     """
-    #     Fetches file from GitHub repo and constructs a graph for frontend
-    #     :param repo_url:
-    #     :param github_token:
-    #     :return:
-    #     """
-    #
-    #     try:
-    #
-    #         await self.get_tree(repo_url,github_token)
-    #
-    #         root_id= self.id_counter
-    #         self.nodes.append({
-    #             "id":root_id,
-    #             "name": self.repo,
-    #             "group": "root",
-    #             "radius": 25
-    #         })
-    #         self.id_counter +=1
-    #
-    #
-    #         for item in self.tree_data[:100]:
-    #             path = item["path"]
-    #             is_folder = item["type"] == "tree"
-    #             node_id = self.id_counter
-    #             self.nodes.append({
-    #                 "id": node_id,
-    #                 "name": path.split("/")[-1],
-    #                 "path" : path,
-    #                 "group": "folder" if is_folder else "file",
-    #                 "radius": 12 if is_folder else 6
-    #             })
-    #             self.path_to_id[path] = self.id_counter
-    #             if "/" in path:
-    #                 parent_path = path.rsplit("/",1)[0]
-    #                 parent_id = self.path_to_id.get(parent_path)
-    #             else:
-    #                 parent_id = root_id
-    #             self.links.append({"source": parent_id,"target": node_id})
-    #             self.id_counter+=1
-    #
-    #
-    #         print(f"Nodes: {self.nodes}")
-    #         print(f"Links: {self.links}")
-    #
-    #
-    #         return {"nodes":self.nodes,"links":self.links}
-    #
-    #     except Exception as e:
-    #         print(f"Graph Generation Failed:{e}")
-    #         return None
+    async def build_repo_graph_frontend(self,repo_url:str,github_token:str):
+        """
+        Fetches file from GitHub repo and constructs a graph for frontend
+        :param repo_url:
+        :param github_token:
+        :return:
+        """
+
+        try:
+
+            await self.get_tree(repo_url,github_token)
+
+            root_id= self.id_counter
+            self.nodes.append({
+                "id":root_id,
+                "name": self.repo,
+                "group": "root",
+                "radius": 25
+            })
+            self.id_counter +=1
+
+
+            for item in self.tree_data[:100]:
+                path = item["path"]
+                is_folder = item["type"] == "tree"
+                node_id = self.id_counter
+                self.nodes.append({
+                    "id": node_id,
+                    "name": path.split("/")[-1],
+                    "path" : path,
+                    "group": "folder" if is_folder else "file",
+                    "radius": 12 if is_folder else 6
+                })
+                self.path_to_id[path] = self.id_counter
+                if "/" in path:
+                    parent_path = path.rsplit("/",1)[0]
+                    parent_id = self.path_to_id.get(parent_path)
+                else:
+                    parent_id = root_id
+                self.links.append({"source": parent_id,"target": node_id})
+                self.id_counter+=1
+
+
+            print(f"Nodes: {self.nodes}")
+            print(f"Links: {self.links}")
+
+
+            return {"nodes":self.nodes,"links":self.links}
+
+        except Exception as e:
+            print(f"Graph Generation Failed:{e}")
+            return None
     #
     #
     # async def preprocessing_graph(self,repo_url:str,github_token:str):
@@ -263,6 +264,7 @@ class GraphBuilder:
 
 
         ##---------------------------------preprocess data-------------------------
+        create_collection()
         chunker = get_chunk_code()
         points = []
         for item in self.tree_data[:100]:
@@ -278,7 +280,7 @@ class GraphBuilder:
 
                 try:
                     # --------Encodes, chunks code in file and creates point for every chunk-------------------------------------------------
-                    if path.endswith(".js",".md",".html",".css",".py"):
+                    if path.endswith((".js",".md",".html",".css",".py")):
                         chunks = chunker.split_text(code_content)
                         embed_texts = embed_text(chunks)
                         for idx, (chunk, embedding) in enumerate(zip(chunks, embed_texts)):
@@ -324,7 +326,7 @@ class GraphBuilder:
                 collection_name="repo_knowledge",
                 points = points
             )
-
+        redis_conn.set(f"repo_details:{repo_url}",json.dumps({"files_list": self.nodes,"owner":self.owner,"commit_id":commit_id,"repo_name":self.repo,"links": self.links}),nx = True)
         return {"structure": structure,"nodes":self.nodes,"owner":self.owner,"Repo_name":self.repo,"links": self.links}
 
 
