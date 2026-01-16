@@ -1,8 +1,9 @@
+import base64
 import os
 import json
 from fastapi import FastAPI, HTTPException, Request,Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse,StreamingResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from starlette.routing import request_response
@@ -14,6 +15,7 @@ import uvicorn
 from ai_engine.graph import GraphBuilder
 from ai_engine.chat import generate_response
 from helper.commit import get_commit_sha,check_commit_id
+from ai_engine.agent import graph
 
 # Load environment variables
 load_dotenv()
@@ -228,19 +230,27 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
             await redis_aconn.aclose()
 
     db_row = supabase.table("chat_messages").select("*").eq("session_id",session_id).execute()
+    print(f"Output of db_row :{db_row}")
+    if not db_row.data:
+        return {"messages": []}
+    db_row = db_row.data[0]
+    encoded_state = db_row.get("state")
     checkpoint_type = db_row.get("checkpoint_type")
+    print(f"encoded_state: {encoded_state}")
+    if not encoded_state:
+        return {"messages":[]}
     state_bytes = base64.b64decode(encoded_state)
-    state = graph.checkpointer.serde.loads_typed((checkpoint_type, state_bytes))
-    print(state)
-    msgs =state.get("messages")
-    if len(msgs.data) > 0:
-        return {"messages": msgs}
-    else:
-        return {"messages": None}
-
-
-
-
+    state = graph.checkpointer.serde.loads_typed((checkpoint_type,state_bytes))
+    print(f"state: {state}")
+    raw_msgs = state.get('channel_values').get("messages",[])
+    print(f"raw messages received from supabase in main.py{raw_msgs}")
+    formatted_msgs = []
+    for m in raw_msgs:
+        formatted_msgs.append({
+            "sender":"ai" if m.type == "ai" else "user",
+            "content": m.content
+        })
+    return {"messages": formatted_msgs}
 
 
 @app.post("/api/analyze")
@@ -317,9 +327,18 @@ async def analyze_repo(request: RepoRequest,user = Depends(require_user)):
 async def chat(request: ChatRequest,user = Depends(require_user)):
     """Saves conversation into database"""
 
-    ai_response = await generate_response(request.session_id,request.text)
+    async def event_generator():
+        try:
+            # Iterate through the generator from chat.py
+            async for content in generate_response(request.session_id, request.text):
+                # We wrap the string in JSON so the frontend can parse it safely
+                data = json.dumps({"content": content})
+                yield f"data: {data}\n\n"
+        except Exception as e:
+            error_data = json.dumps({"error": str(e)})
+            yield f"data: {error_data}\n\n"
 
-    return {"response": str(ai_response)}
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 

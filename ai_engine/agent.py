@@ -196,13 +196,18 @@ def router_node(state:RepoState):
     parsed = router_llm.invoke(prompt)
 
 
-    state["intent"] = parsed.intent
-    state["selected_files"] = parsed.files
-    state["planner_confidence"] = parsed.confidence
+    # state["intent"] = parsed.intent
+    # state["selected_files"] = parsed.files
+    # state["planner_confidence"] = parsed.confidence
 
-    if parsed.intent == "general":
-        state["final_answer"] = parsed.answer
-    return state
+    # if parsed.intent == "general":
+    #     state["final_answer"] = parsed.answer
+    return {
+        "intent": parsed.intent,
+        "selected_files": parsed.files,
+        "planner_confidence": parsed.confidence,
+        "final_answer": parsed.answer if parsed.intent == "general" else None
+    }
 
 
 def neo4j_node(state:RepoState):
@@ -256,9 +261,10 @@ def technical_node(state:RepoState):
     })
 
     response = llm_technical.invoke(prompt).content
-    state["final_answer"] = response
+
     return {
-        "messages": state["messages"] + [HumanMessage(state["user_query"]), AIMessage(response)]
+        "final_answer": response,
+        "messages": [HumanMessage(content=state["user_query"]), AIMessage(content=response)]
     }
 def answer_node(state:RepoState):
     """
@@ -266,10 +272,16 @@ def answer_node(state:RepoState):
     :param state: 
     :return: 
     """
-    state["messages"] = state["messages"] + [HumanMessage(state["user_query"]),AIMessage(state["final_answer"])]
-    return {"messages": state["messages"]}
+
+    return {
+        "final_answer":state["final_answer"],
+        "messages": [
+            HumanMessage(content=state["user_query"]),
+            AIMessage(content=state["final_answer"])
+        ]
+    }
 def router_func(state:RepoState):
-    print(state)
+
     if state["intent"] == "general":
         return "general_answer"
     else:

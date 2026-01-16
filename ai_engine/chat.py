@@ -8,6 +8,7 @@ redis_conn = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 #TODO: Import graph build in agent.py file and generate chat response
 from supabase import create_client,Client
 from ai_engine.agent import graph
+from langchain_core.messages import AIMessage
 supabase:Client = create_client(os.getenv("SUPABASE_URL"),os.getenv("SUPABASE_KEY"))
 async def generate_response(session_id:int,text:str):
     history = supabase.table("chat_messages").select("*").eq("session_id",session_id).execute()
@@ -23,23 +24,30 @@ async def generate_response(session_id:int,text:str):
             "files_path": repo_details["files_list"],
             "user_query": text
         }
-        ai_response = graph.invoke(state,config = {"configurable":{"thread_id":session_id}})
-        print(f"AI response(state) when its a new convo: {ai_response}")
-        return ai_response["messages"][-1].content
+    else:
+        db_row = history.data[0]
+
+        encoded_state = db_row.get("state")
+        checkpoint_type = db_row.get("checkpoint_type")
+        state_bytes = base64.b64decode(encoded_state)
+        state = graph.checkpointer.serde.loads_typed((checkpoint_type, state_bytes))
+        state["user_query"] = text
+
+        # config = {"configurable": {"thread_id": session_id}}
+        # ai_response = graph.invoke(state,config = config)
+        # print(f"AI response(state) when its a new convo: {ai_response}")
+        # async for chunk in graph.astream(state, config, stream_mode="values"):
+        #     if "messages" in chunk:
+        #         yield chunk["messages"][-1].content
 
 
-    db_row = history.data[0]
 
-    encoded_state = db_row.get("state")
-    checkpoint_type = db_row.get("checkpoint_type")
-    state_bytes = base64.b64decode(encoded_state)
-    state = graph.checkpointer.serde.loads_typed((checkpoint_type,state_bytes))
-    state["user_query"] = text
     print(f"State before invoke in chat.py:{state}")
     config = {
         "configurable": {"thread_id": session_id}
     }
-    response = graph.invoke(state,config)
-    print(response)
-    return response["messages"][-1].content
-
+    state["final_answer"] = None
+    async for event in graph.astream(state,config = config,stream_mode = "values"):
+        answer = event.get("final_answer")
+        if answer and answer.strip():
+            yield answer

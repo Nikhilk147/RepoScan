@@ -416,23 +416,55 @@
             appendMessage('user', text);
             input.value = '';
 
+            const aiContentDiv = createStreamingPlaceholder();
+            let fullResponse = "";
+            let isFirstChunk = true;
+
             try {
-                const res = await fetch('/api/chat', {
+                const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ session_id: parseInt(currentSessionId), text: text })
                 });
-                const data = await res.json();
-                if (!res.ok) {
-                    appendMessage('ai', `Error: ${JSON.stringify(data.detail)}`);
-                    return;
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = JSON.parse(line.slice(6));
+
+                            // IF we have actual content, remove the "Thinking..." indicator
+                            if (data.content && data.content.trim().length > 0) {
+                                if (isFirstChunk) {
+                                    aiContentDiv.innerHTML = ""; // Clear the indicator
+                                    isFirstChunk = false;
+                                }
+
+                                fullResponse = data.content;
+                                aiContentDiv.innerHTML = marked.parse(fullResponse);
+
+                                // Re-apply highlighting
+                                aiContentDiv.querySelectorAll('pre code').forEach((block) => {
+                                    hljs.highlightElement(block);
+                                });
+                            }
+                        }
+                    }
+                    document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
                 }
-                appendMessage('ai', data.response);
             } catch (error) {
-                appendMessage('ai', "Error: Server unreachable.");
+                console.error("Streaming error:", error);
+                aiContentDiv.innerHTML = `<span class="text-red-400">Error: Connection lost.</span>`;
             }
         }
-
         function appendMessage(sender, text) {
             const container = document.getElementById('chat-container');
             const safeSender = (sender || "").toLowerCase().trim();
@@ -469,6 +501,25 @@
                     hljs.highlightElement(block);
                 });
             }
+        }
+        function createStreamingPlaceholder() {
+            const container = document.getElementById('chat-container');
+            const div = document.createElement('div');
+            div.className = `flex gap-3 animate-fade-in mb-4 ai-streaming-wrapper`;
+            div.innerHTML = `
+                <div class="w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-[10px] font-bold bg-purple-600/50 text-purple-100">AI</div>
+                <div class="max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed shadow-md markdown-body bg-gray-800/50 text-gray-300 rounded-tl-none border border-white/5 content-placeholder">
+                    <div class="thinking-indicator flex items-center gap-2 text-gray-500 italic">
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"></div>
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce [animation-delay:-.3s]"></div>
+                        <div class="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce [animation-delay:-.5s]"></div>
+                        <span>Thinking...</span>
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+            return div.querySelector('.content-placeholder');
         }
 
         async function loadSessions() {
