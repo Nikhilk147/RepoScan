@@ -193,7 +193,7 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
     profile_resp = supabase.table("profiles").select("github_token").eq("id", user.id).single().execute()
     github_token = profile_resp.data.get('github_token')
     commit_info = check_commit_id(session_id = session_id,client = supabase,github_token=github_token)
-
+    print(f"commmit_info: {commit_info}")
     if not commit_info["is_latest"]:
         ##-------------------------------------------------------BLocking--------------------------------
         job_id = f"{user.id}:{session_id}"
@@ -229,6 +229,7 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
             await pubsub.unsubscribe(channel_name)
             await redis_aconn.aclose()
 
+    # -------------------------------load conversation_history -------------------------------
     db_row = supabase.table("chat_messages").select("*").eq("session_id",session_id).execute()
     print(f"Output of db_row :{db_row}")
     if not db_row.data:
@@ -250,7 +251,17 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
             "sender":"ai" if m.type == "ai" else "user",
             "content": m.content
         })
-    return {"messages": formatted_msgs}
+
+    graph_data=None
+    data = await redis_aconn.get(f"repo_details:{commit_info["repo_url"]}")
+    if data:
+        data = json.loads(data)
+        graph_data = {
+            "nodes": data.get("files_list"),
+            "links": data.get("links")
+        }
+
+    return {"messages": formatted_msgs,"graph": graph_data}
 
 
 @app.post("/api/analyze")

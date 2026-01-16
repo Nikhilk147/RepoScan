@@ -298,17 +298,27 @@
                 // 1. Load Messages
                 container.innerHTML = '';
                 const messages = data.messages || [];
-                if(messages.length === 0) container.innerHTML = '<div class="text-center text-gray-600 text-xs mt-10">Start the conversation!</div>';
-                messages.forEach(msg => appendMessage(msg.sender, msg.content));
+                if(messages.length === 0) {
+                    container.innerHTML = '<div class="text-center text-gray-600 text-xs mt-10">Start the conversation!</div>';
+                } else {
+                    messages.forEach(msg => appendMessage(msg.sender, msg.content));
+                }
 
-                // 2. Load Graph (TODO: In a real app, you'd fetch the specific graph for this session)
-                // For now, we assume the user might want to re-analyze or we persist it differently.
-                // If you want to persist graphs, you need to store the JSON in the DB.
-                // For this demo, we'll clear the graph or leave the previous one.
-                document.getElementById('d3-container').innerHTML = '<div class="flex items-center justify-center h-full text-gray-600 text-xs">Graph data not persisted in demo (Re-analyze to view)</div>';
+                // 2. Load Graph Data
+                const graphContainer = document.getElementById('d3-container');
+                if (data.graph && data.graph.nodes && data.graph.nodes.length > 0) {
+                    // Use a small timeout to ensure the workspace view transition is complete
+                    // and the container has its correct width/height dimensions.
+                    setTimeout(() => {
+                        renderGraph(data.graph);
+                    }, 100);
+                } else {
+                    graphContainer.innerHTML = '<div class="flex items-center justify-center h-full text-gray-600 text-xs">No graph data available for this session</div>';
+                }
 
             } catch (e) {
-                container.innerHTML = '<div class="text-center text-red-500 text-xs">Failed to load</div>';
+                console.error("Error loading session:", e);
+                container.innerHTML = '<div class="text-center text-red-500 text-xs">Failed to load chat history</div>';
             }
         }
 

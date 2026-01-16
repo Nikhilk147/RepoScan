@@ -52,7 +52,7 @@ router_prompt = ChatPromptTemplate.from_messages(
     2. If technical, which files are relevant?
     3. Provide a confidence score per file.
     4. If general, provide a direct answer.
-    
+    5. Intent should be technical if query is about repository and need repository details to answer.
     Return ONLY valid JSON matching the schema.
 
     

@@ -46,7 +46,8 @@ def check_commit_id(session_id,client, github_token ):
 
     if db_sha == github_sha:
         response_json = {
-            "is_latest": True
+            "is_latest": True,
+            "repo_url": repo_url,
         }
         return response_json
     else:
