@@ -6,21 +6,21 @@ import time
 from graph_db import Neo4jHandler
 from graph import GraphBuilder
 import asyncio
-from helper.commit import get_commit_sha
+
 import multiprocessing
 from supabase import Client,create_client
 import traceback
-#TODO: Increase the functionality by retrieving repo files ..scanning them...get the file content...can building method from graph.db
-#TODO: first check if the repo exists in graph_db
-#TODO: if repo exists but if it represents old commit..initiate the build graph functionality
+from ai_engine.qdrant import delete_chunk
 
+load_dotenv()
 MAIN_QUEUE = "repo_tasks"
 QUEUE_PROCESSING = "repo_tasks:processing"
 UNIQUE_SET = "repo_task:unique_set"
 TIMEOUT_SEC  = 300
 MAX_CONCURRENT_JOBS = 5
-supabase: Client = create_client(os.getenv("SUPABASE_URL"),os.getenv("SUPABASE_KEY"))
-load_dotenv()
+
+
+supabase: Client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 redis_conn = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
 # ------------------------------------------------------Build database graph------------------------------------------------------------
@@ -43,12 +43,38 @@ async def build_graph(repo_detail,commit_id):
 
 
 
-        neo4j_handler.close()
+
     except Exception as e:
         full_traceback = traceback.format_exc()
         print(full_traceback)
         print(f"Error occurred while building graph in neo4j:{e}")
+    finally:
+        neo4j_handler.close()
 
+
+# --------------------------------------------------------------------Deleting garbage resources ---------------------------
+
+
+async def cleanup_old_commit_data(job_details):
+    """
+    Processes all the cleanup of garbage data on old commits.
+    :param job_details:
+    :return:
+    """
+    clean_url = job_details["repo_url"].rstrip("/")
+    parts = clean_url.split("/")
+    owner,repo = parts[-2],parts[-1].removesuffix('.git')
+    try:
+        #Cleaning qdrant chunks
+        delete_chunk(repo,commit_id=job_details['commit_id'])
+
+        #delete graph in neo4j
+        neo4j_handler = Neo4jHandler()
+        neo4j_handler.delete_commit(repo,owner)
+    except Exception as e:
+        print(f"Exception while deleting garbage data: {e}")
+    finally:
+        neo4j_handler.close()
 
 # ------------------------------------------------------------------------Queueing jobs ----------------------------------------------
 
@@ -62,11 +88,15 @@ async def _async_processing_task_(job_details):
     github_token = job_details["github_token"]
     session_id = job_details["session_id"]
     try:
-        commit_id = get_commit_sha(repo_url=repo_url, github_token=github_token)
+        commit_id = job_details["commit_id"]
         repo_details = await graph_builder.preprocessing_graph(repo_url=repo_url, github_token=github_token,commit_id=commit_id)
 
         await build_graph(repo_detail = repo_details,commit_id = commit_id)
         graph_data = {"nodes":repo_details["nodes"],"links":repo_details["links"]}
+
+        if job_details["is_updated"]:
+            await cleanup_old_commit_data(job_details)
+
         job_detail = {
             "status": "completed",
             "graph_data": graph_data
@@ -82,15 +112,18 @@ async def _async_processing_task_(job_details):
         print(f"Encounter error in job completion :{e}")
 
 def processing_task_wrapper(job_details):
+    """
+    Sync wrapper of async _async_processing_task_
+    :param job_details:
+    :return:
+    """
     asyncio.run(_async_processing_task_(job_details))
 
 
-def cleanup_resources(redis_conn, job_details, reason="Finished"):
+def cleanup_resources(job_details, reason="Finished"):
     """
-
-    :param redis_conn:
+    Cleanups the completed or failed jobs
     :param job_details:
-
     :param reason:
     :return:
     """
@@ -104,23 +137,30 @@ def cleanup_resources(redis_conn, job_details, reason="Finished"):
     pipe.execute()
 
     if reason == "Killed" or reason == "Crashed":
+
         print("Deleting resources occupied by a killed job")
+
         session_id = job_details["session_id"]
         user_id = job_details["user_id"]
-        repo_id = supabase.table("chat_sessions").select("repository_id").eq("id",session_id).eq("user_id",user_id).single().execute().data["repository_id"]
-        repo = supabase.table("repositories").select("n_sessions").eq("id",repo_id).single().execute().data["n_sessions"]
-        if repo == 1:
-            supabase.table("repositories").delete().eq("id",repo_id).eq("user_id",user_id).execute()
-            supabase.table("chat_sessions").delete().eq("id",session_id).execute()
-            repo_url = job_details["url"]
-            clean_url = repo_url.rstrip("/")
+        try:
+            repo_id = supabase.table("chat_sessions").select("repository_id").eq("id",session_id).eq("user_id",user_id).single().execute().data["repository_id"]
+            repo = supabase.table("repositories").select("n_sessions").eq("id",repo_id).single().execute().data["n_sessions"]
+            if repo == 1:
+                supabase.table("repositories").delete().eq("id",repo_id).eq("user_id",user_id).execute()
+                supabase.table("chat_sessions").delete().eq("id",session_id).execute()
+                repo_url = job_details["url"]
+                clean_url = repo_url.rstrip("/")
 
-            parts = clean_url.split("/")
-            if len(parts) < 2: return None
-            owner, repo = parts[-2], parts[-1].removesuffix(".git")
-            neo4j_handler = Neo4jHandler()
-            neo4j_handler.delete_commit(repo_name=repo,owner_name=owner)
-            print("Completed deleting resources from neo4j and supabase")
+                parts = clean_url.split("/")
+                if len(parts) < 2: return None
+                owner, repo = parts[-2], parts[-1].removesuffix(".git")
+                neo4j_handler = Neo4jHandler()
+                neo4j_handler.delete_commit(repo_name=repo,owner_name=owner)
+                print("Completed deleting resources from neo4j and supabase")
+        except Exception as e:
+            print(e)
+
+
 
 
 
@@ -144,9 +184,9 @@ async def start_worker():
 
             if not p.is_alive():
                 if p.exitcode == 0:
-                    cleanup_resources(redis_conn,data,reason="Finished")
+                    cleanup_resources(data,reason="Finished")
                 else:
-                    cleanup_resources(redis_conn,data,reason="Crashed")
+                    cleanup_resources(data,reason="Crashed")
 
                 del running_processes[job_id]
                 continue
@@ -155,7 +195,7 @@ async def start_worker():
                 print(f"TIMEOUT reached {runtime:.2f}, Killing {job_id}")
                 p.terminate()
                 p.join()
-                cleanup_resources(redis_conn,data,reason="Killed")
+                cleanup_resources(data,reason="Killed")
                 del running_processes[job_id]
         if len(running_processes) < MAX_CONCURRENT_JOBS:
             try:

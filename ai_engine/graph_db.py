@@ -1,10 +1,5 @@
-#TODO: define a structure of the graph
-#TODO: Check if can undergo a similarity search
-#TODO: define functions for building a graph from a new query
-#TODO: check if there is a functionality to delete a graph after a specific time(TTL)
-#TODO: Make sure it store commit id for every repo in the database
-import os
 
+import os
 from neo4j import GraphDatabase
 from dotenv import load_dotenv
 
@@ -203,7 +198,7 @@ class Neo4jHandler:
             DETACH DELETE n
         """
         with self.driver.session()  as session:
-            session.run(query_to_delete_commit,owner= owner_name,repo = repo_name)
+            session.run(query_to_delete_commit,owner= owner_name,name = repo_name)
 
 
 

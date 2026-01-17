@@ -8,8 +8,9 @@ redis_conn = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 #TODO: Import graph build in agent.py file and generate chat response
 from supabase import create_client,Client
 from ai_engine.agent import graph
-from langchain_core.messages import AIMessage
 supabase:Client = create_client(os.getenv("SUPABASE_URL"),os.getenv("SUPABASE_KEY"))
+
+
 async def generate_response(session_id:int,text:str):
     history = supabase.table("chat_messages").select("*").eq("session_id",session_id).execute()
     print(history)
@@ -26,23 +27,13 @@ async def generate_response(session_id:int,text:str):
         }
     else:
         db_row = history.data[0]
-
         encoded_state = db_row.get("state")
         checkpoint_type = db_row.get("checkpoint_type")
         state_bytes = base64.b64decode(encoded_state)
         state = graph.checkpointer.serde.loads_typed((checkpoint_type, state_bytes))
         state["user_query"] = text
 
-        # config = {"configurable": {"thread_id": session_id}}
-        # ai_response = graph.invoke(state,config = config)
-        # print(f"AI response(state) when its a new convo: {ai_response}")
-        # async for chunk in graph.astream(state, config, stream_mode="values"):
-        #     if "messages" in chunk:
-        #         yield chunk["messages"][-1].content
 
-
-
-    print(f"State before invoke in chat.py:{state}")
     config = {
         "configurable": {"thread_id": session_id}
     }

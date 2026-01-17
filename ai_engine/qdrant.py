@@ -1,3 +1,4 @@
+import qdrant_client.http.api_client
 from qdrant_client import QdrantClient
 from qdrant_client import models
 from sentence_transformers import SentenceTransformer
@@ -13,8 +14,7 @@ embedding_model = SentenceTransformer(
     'sentence-transformers/all-MiniLM-L6-v2'
 )
 
-# qdrant_client = QdrantClient(url = os.getenv("QDRANT_ENDPOINT") ,api_key = os.getenv("QDRANT_API_KEY") )
-qdrant_client = QdrantClient(url="http://localhost:6333")
+client = QdrantClient(url=os.getenv("QDRANT_ENDPOINT"),api_key=os.getenv("QDRANT_API_KEY"))
 
 
 def get_chunk_code():
@@ -36,8 +36,8 @@ def get_chunk_code():
 
 
 def create_collection():
-    if not qdrant_client.collection_exists("repo_knowledge"):
-        qdrant_client.create_collection(
+    if not client.collection_exists("repo_knowledge"):
+        client.create_collection(
             collection_name = "repo_knowledge",
             vectors_config = models.VectorParams(
                 size = 384,
@@ -58,6 +58,25 @@ def create_collection():
 
             )
         )
+        client.create_payload_index(
+            collection_name="repo_knowledge",
+            field_name="commit_id",
+            field_schema="keyword"
+        )
+
+        # Create keyword index for repo_name
+        client.create_payload_index(
+            collection_name="repo_knowledge",
+            field_name="repo_name",
+            field_schema="keyword"
+        )
+
+        # Create keyword index for path
+        client.create_payload_index(
+            collection_name="repo_knowledge",
+            field_name="path",
+            field_schema="keyword"
+        )
 
 def embed_text(content:list[str]):
     return embedding_model.encode(
@@ -69,29 +88,29 @@ def embed_text(content:list[str]):
 chunker = get_chunk_code()
 
 
-def ingest_repo(commit_id,code_content,repo_name,path):
-    chunks = chunker.split_text(code_content)
-    embed_texts = embed_text(chunks)
-    points = []
-    for idx, (chunk, embedding) in enumerate(zip(chunks, embed_texts)):
-        payload = {
-            "repo_name": repo_name,
-            "commit_id": commit_id,
-            "path": path,
-            "text": chunk,
-            "language": path.split(".")[-1],
-            "chunk_index": idx
-        }
-        point = models.PointStruct(
-            id = idx,
-            payload = payload,
-            vector = embedding
-        )
-        points.append(point)
-    qdrant_client.upsert(
-        collection_name = "repo_knowledge",
-        points = points
-    )
+# def ingest_repo(commit_id,code_content,repo_name,path):
+#     chunks = chunker.split_text(code_content)
+#     embed_texts = embed_text(chunks)
+#     points = []
+#     for idx, (chunk, embedding) in enumerate(zip(chunks, embed_texts)):
+#         payload = {
+#             "repo_name": repo_name,
+#             "commit_id": commit_id,
+#             "path": path,
+#             "text": chunk,
+#             "language": path.split(".")[-1],
+#             "chunk_index": idx
+#         }
+#         point = models.PointStruct(
+#             id = idx,
+#             payload = payload,
+#             vector = embedding
+#         )
+#         points.append(point)
+#     qdrant_client.upsert(
+#         collection_name = "repo_knowledge",
+#         points = points
+#     )
 
 def search_chunk(repo_name,commit_id,files,user_query,top_k = 20):
     chunks = []
@@ -112,7 +131,7 @@ def search_chunk(repo_name,commit_id,files,user_query,top_k = 20):
         ]
     )
     embed_query = embed_text(content=user_query)
-    output = qdrant_client.query_points(
+    output = client.query_points(
         collection_name = "repo_knowledge",
         query= embed_query,
         query_filter=q_filter,
@@ -126,5 +145,27 @@ def search_chunk(repo_name,commit_id,files,user_query,top_k = 20):
 
     return output
 
-
-
+def delete_chunk(repo_name:str,commit_id:str):
+    """
+    Delete all the chunk with the specified repo_name and commit_id
+    :param repo_name:
+    :param commit_id:
+    :return:
+    """
+    client.delete(
+        collection_name="repo_knowledge",
+        points_selector= models.FilterSelector(
+            filter = models.Filter(
+                must = [
+                    models.FieldCondition(
+                        key = "repo_name",
+                        match = models.MatchValue(value = repo_name)
+                    ),
+                    models.FieldCondition(
+                        key = "commit_id",
+                        match = models.MatchValue(value = commit_id)
+                    )
+                ]
+            )
+        )
+    )

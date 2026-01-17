@@ -6,7 +6,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse,StreamingResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
-from starlette.routing import request_response
 from supabase import create_client, Client
 from pydantic import BaseModel
 import asyncio
@@ -16,16 +15,15 @@ from ai_engine.graph import GraphBuilder
 from ai_engine.chat import generate_response
 from helper.commit import get_commit_sha,check_commit_id
 from ai_engine.agent import graph
+from helper.redis_helper import redis_publish
+from ai_engine.qdrant import delete_chunk
+from ai_engine.graph_db import Neo4jHandler
+
+
 
 # Load environment variables
 load_dotenv()
-
-#TODO: Integrate with chat_response
-#TODO: MAke sure that messages are in the form Message Format
-#TODO : Integrate with Langgraph persistence format
-#TODO: include a commit id check if it doesn't match, initiate the graph building.Replace the existing graph
-
-
+redis_aconn = aredis.from_url(os.getenv("REDIS_URL"))
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
 
@@ -35,15 +33,9 @@ if not supabase_url or not supabase_key:
 
 app = FastAPI()
 supabase: Client = create_client(supabase_url, supabase_key)
-redis_aconn = aredis.from_url(os.getenv("REDIS_URL"))
-
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-MAIN_QUEUE = "repo_tasks"
-UNIQUE_SET = "repo_task:unique_set"
-MAX_QUEUE_SIZE = 100
 
 class RepoRequest(BaseModel):
     url:str
@@ -83,26 +75,8 @@ async def require_user(user = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code= 401,detail="Not authenticated")
     return user
-# ----------------------------------------------redis---------------------------------------------
 
-async def push_to_redis(job_data):
-    current_size = await redis_aconn.llen(MAIN_QUEUE)
-    if current_size >= MAX_QUEUE_SIZE:
-        print(f"REJECTED: Queue is full: {current_size}")
-        return False
-    job_id = job_data["job_id"]
-    if await redis_aconn.sadd(UNIQUE_SET,job_id) ==0:
-        print(f"IGNORED: Job {job_id} already queued")
-        return False
-
-    payload = json.dumps(job_data)
-    await redis_aconn.lpush(MAIN_QUEUE,payload)
-    print("Queued successfully...")
-    return True
-
-
-
-# --- ROUTES ---
+# -------------------------------------------------------- ROUTES -----------------------------
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, user = Depends(get_current_user)):
@@ -146,7 +120,7 @@ def login_github():
 
 @app.get("/auth/callback")
 def auth_callback(code:str):
-    is_production = os.getenv("ENVIRONMENT") == "production"
+
     try:
 
         res = supabase.auth.exchange_code_for_session({"auth_code":code})
@@ -169,13 +143,14 @@ def auth_callback(code:str):
     except Exception as e:
         return HTMLResponse(f"Auth failed :{str(e)}",status_code=400)
 
+
+
 @app.get("/logout")
 def logout():
     response = RedirectResponse(url="/")
     response.delete_cookie("access_token")
     return response
 
-#----------------------------Auth flow ------------------------------------
 
 @app.get("/api/sessions")
 async def get_sessions(user = Depends(require_user)):
@@ -193,7 +168,7 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
     profile_resp = supabase.table("profiles").select("github_token").eq("id", user.id).single().execute()
     github_token = profile_resp.data.get('github_token')
     commit_info = check_commit_id(session_id = session_id,client = supabase,github_token=github_token)
-    print(f"commmit_info: {commit_info}")
+    graph_data = None
     if not commit_info["is_latest"]:
         ##-------------------------------------------------------BLocking--------------------------------
         job_id = f"{user.id}:{session_id}"
@@ -204,64 +179,108 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
             "session_id": session_id,
             "github_token": github_token,
             "user_id": user.id,
+            "commit_id": commit_info["latest_commit"],
+            "is_updated": True
         }
+        graph_data = await redis_publish(job_details)
+        supabase.table("repositories").update({"latest_commit_id": commit_info["latest_commit"]})
 
-        pubsub = redis_aconn.pubsub()
-        channel_name = f"job_status:{job_id}"
-        await pubsub.subscribe(channel_name)
-        try:
-            await push_to_redis(job_details)
-            print(f"Waiting for the job to complete:{job_id}")
-            async with asyncio.timeout(1000):
-                async for message in pubsub.listen():
-                    if message["type"] == "message":
-                        data = json.loads(message["data"])
-                        if data["status"] == "completed":
-                            graph_data = data["graph_data"]
-                            break
-                        if data["status"] == "failed":
-                            raise HTTPException(status_code=500, detail=f"Job failed to execute :{job_id}")
-            supabase.table("repositories").update({"latest_commit_id":commit_info["latest_commit"]})
-        except asyncio.TimeoutError:
-            print("Job timeout reached")
-            raise HTTPException(status_code=504, detail=f"Analyze timeout(worker took too long)")
-        finally:
-            await pubsub.unsubscribe(channel_name)
-            await redis_aconn.aclose()
 
     # -------------------------------load conversation_history -------------------------------
     db_row = supabase.table("chat_messages").select("*").eq("session_id",session_id).execute()
-    print(f"Output of db_row :{db_row}")
     if not db_row.data:
         return {"messages": []}
     db_row = db_row.data[0]
     encoded_state = db_row.get("state")
     checkpoint_type = db_row.get("checkpoint_type")
-    print(f"encoded_state: {encoded_state}")
+
     if not encoded_state:
         return {"messages":[]}
     state_bytes = base64.b64decode(encoded_state)
     state = graph.checkpointer.serde.loads_typed((checkpoint_type,state_bytes))
-    print(f"state: {state}")
+
     raw_msgs = state.get('channel_values').get("messages",[])
-    print(f"raw messages received from supabase in main.py{raw_msgs}")
+
     formatted_msgs = []
     for m in raw_msgs:
         formatted_msgs.append({
             "sender":"ai" if m.type == "ai" else "user",
             "content": m.content
         })
+    if not graph_data:
 
-    graph_data=None
-    data = await redis_aconn.get(f"repo_details:{commit_info["repo_url"]}")
-    if data:
-        data = json.loads(data)
-        graph_data = {
-            "nodes": data.get("files_list"),
-            "links": data.get("links")
-        }
+        data = await redis_aconn.get(f"repo_details:{commit_info["repo_url"]}")
+        if data:
+            data = json.loads(data)
+            graph_data = {
+                "nodes": data.get("files_list"),
+                "links": data.get("links")
+            }
+
 
     return {"messages": formatted_msgs,"graph": graph_data}
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: int, user=Depends(require_user)):
+    try:
+        # 1. Fetch the session to get the repo_id
+        session_res = supabase.table("chat_sessions").select('repository_id').eq("id", session_id).execute()
+        if not session_res.data:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        repo_id = session_res.data[0].get("repository_id")
+
+        # 2. Fetch the repository data
+        repo_res = supabase.table("repositories").select("*").eq("id", repo_id).single().execute()
+        if not repo_res.data:
+            # If repo is already gone, just delete the session
+            supabase.table("chat_sessions").delete().eq("id", session_id).execute()
+            return {"status": "success", "cleaned_up": False}
+
+        repo_db_row = repo_res.data
+        n_session = repo_db_row.get("n_sessions", 0)
+
+        if n_session <= 1:
+            # CONDITION: Last session -> Full Cleanup
+            repo_full_name = repo_db_row.get("full_name")  # e.g., "https://github.com/user/repo"
+            cleaned_url = repo_full_name.strip("/")
+            parts = cleaned_url.split("/")
+
+            # Corrected Unpacking: owner is second to last, repo is last
+            owner = parts[-2]
+            repo = parts[-1].removesuffix(".git")
+
+            # A. Clean Redis (Must be awaited)
+            await redis_aconn.delete(f"repo_details:{repo_full_name}")
+
+            # B. Clean Qdrant
+            commit_id = repo_db_row.get("latest_commit_id")
+            delete_chunk(repo, commit_id)
+
+            # C. Clean Neo4j
+            neo4j_handler = Neo4jHandler()
+            # Ensure your delete_commit method handles the owner/repo correctly
+            neo4j_handler.delete_commit(repo_name=repo, owner_name=owner)
+            neo4j_handler.close()
+
+            # D. Delete Repository Record
+            supabase.table("repositories").delete().eq("id", repo_id).execute()
+        else:
+            # CONDITION: Reduce session count
+            supabase.table("repositories").update({"n_sessions": n_session - 1}).eq("id", repo_id).execute()
+
+        # 3. Delete the session itself
+        supabase.table("chat_sessions").delete().eq("id", session_id).execute()
+
+        print(f"Session {session_id} deleted successfully")
+        return {
+            "status": "success",
+            "cleaned_up": n_session <= 1
+        }
+
+    except Exception as e:
+        print(f"Error deleting session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/analyze")
@@ -302,29 +321,11 @@ async def analyze_repo(request: RepoRequest,user = Depends(require_user)):
             "session_id": session_id,
             "github_token": github_token,
             "user_id": user.id,
+            "commit_id": commit_sha,
+            "is_updated" : False
         }
-
-        pubsub = redis_aconn.pubsub()
-        channel_name = f"job_status:{job_id}"
-        await pubsub.subscribe(channel_name)
-        try:
-            await push_to_redis(job_details)
-            print(f"Waiting for the job to complete:{job_id}")
-            async with asyncio.timeout(1000):
-                async for message in pubsub.listen():
-                    if message["type"] == "message":
-                        data = json.loads(message["data"])
-                        if data["status"] == "completed":
-                            graph_data = data["graph_data"]
-                            break
-                        if data["status"] == "failed":
-                            raise HTTPException(status_code = 500, detail = f"Job failed to execute :{job_id}")
-        except asyncio.TimeoutError:
-            print("Job timeout reached")
-            raise HTTPException(status_code = 504,detail=f"Analyze timeout(worker took too long)")
-        finally:
-            await pubsub.unsubscribe(channel_name)
-            await redis_aconn.aclose()
+        graph_data = await redis_publish(job_details)
+        print(f"graph_data : {graph_data}")
     else:
         graph_builder = GraphBuilder()
         graph_data = await graph_builder.build_repo_graph_frontend(request.url,github_token)
@@ -340,9 +341,8 @@ async def chat(request: ChatRequest,user = Depends(require_user)):
 
     async def event_generator():
         try:
-            # Iterate through the generator from chat.py
+
             async for content in generate_response(request.session_id, request.text):
-                # We wrap the string in JSON so the frontend can parse it safely
                 data = json.dumps({"content": content})
                 yield f"data: {data}\n\n"
         except Exception as e:
@@ -354,7 +354,5 @@ async def chat(request: ChatRequest,user = Depends(require_user)):
 
 
 if __name__ == "__main__":
-
-
     # Use host="0.0.0.0" to make it accessible if testing from other devices
     uvicorn.run(app, port=8000)

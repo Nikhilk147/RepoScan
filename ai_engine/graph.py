@@ -8,7 +8,7 @@ import requests
 import asyncio
 from qdrant_client import QdrantClient,models
 from ai_engine.qdrant import create_collection,get_chunk_code,embed_text
-qdrant_client = QdrantClient(url="http://localhost:6333")
+qdrant_client = QdrantClient(url=os.getenv("QDRANT_ENDPOINT"),api_key=os.getenv("QDRANT_API_KEY"))
 import redis
 redis_conn = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
@@ -166,46 +166,7 @@ class GraphBuilder:
         except Exception as e:
             print(f"Graph Generation Failed:{e}")
             return None
-    #
-    #
-    # async def preprocessing_graph(self,repo_url:str,github_token:str):
-    #     """
-    #     1. Filter files and stores .py and .md files
-    #     2. Breaks .py file into Imports,Functions definitions,Class definitions,Function calls
-    #     :param repo_url:
-    #     :param github_token:
-    #     :return:
-    #     """
-    #     structure = {}
-    #     await self.get_tree(repo_url,github_token)
-    #
-    #
-    #     for item in self.tree_data[:100]:
-    #         path = item["path"]
-    #
-    #         if item["type"] == "blob":
-    #
-    #             if path.endswith(".py"):
-    #
-    #                 raw_url = f"https://raw.githubusercontent.com/{self.owner}/{self.repo}/{self.default_branch}/{path}"
-    #                 try:
-    #                     response = requests.get(raw_url)
-    #                     code_content = response.text
-    #
-    #                     tree = ast.parse(code_content)
-    #                     analyzer = CodeAnalyzer()
-    #                     analyzer.visit(tree)
-    #
-    #                     structure[path] = {
-    #                         "imports":analyzer.imports,
-    #                         "functions": analyzer.functions,
-    #                         "class_def":analyzer.class_def,
-    #                         "calls":analyzer.calls
-    #                     }
-    #                 except Exception as e:
-    #                     print(f"Encountered error while breaking python files :{e}")
-    #
-    #     return {"structure": structure,"nodes":self.nodes,"owner":self.owner,"Repo_name":self.repo}
+
     async def preprocessing_graph(self, repo_url: str, github_token: str,commit_id:str):
         """
         1. Filter files and stores .py and .md files

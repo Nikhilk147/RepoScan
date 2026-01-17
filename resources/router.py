@@ -1,7 +1,5 @@
 from langchain.agents.structured_output import ToolStrategy
-
 from langchain_core.prompts import ChatPromptTemplate
-
 from pydantic import BaseModel,Field
 from typing import List, Optional,Literal
 
@@ -11,6 +9,8 @@ class RouterOutput(BaseModel):
     confidence: float = Field(description="How llm is confident about the selected files",gt=0,le=1)
     files : list[str] = Field(description="List of selected files relevant to the user query.")
     answer: Optional[str] = Field(description="Answer to the query if query belongs to the general category.")
+
+
 # for future optimizations
 # class SelectedFile(BaseModel):
 #     path: str
