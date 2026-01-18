@@ -3,147 +3,233 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Git Assistant - Workspace</title>
+    <title>Git Assistant | Workspace</title>
+
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.0/split.min.js"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { background-color: #050505; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        /* Modern Fonts */
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #0f1117; }
-        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555; }
-
-        .glass-panel { background: rgba(20, 20, 25, 0.8); backdrop-filter: blur(12px); border-right: 1px solid rgba(255,255,255,0.05); }
-
-        .gutter {
-            background-color: #1f2937;
-            background-repeat: no-repeat;
-            background-position: 50%;
-            cursor: col-resize;
-            transition: background-color 0.2s;
+        :root {
+            --bg-deep: #050505;
+            --bg-panel: rgba(20, 20, 23, 0.6);
+            --neon-purple: #8b5cf6;
         }
-        .gutter:hover { background-color: #8b5cf6; }
+
+        body {
+            background-color: var(--bg-deep);
+            color: #cbd5e1;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+        }
+
+        /* --- Glass Sidebar --- */
+        .glass-sidebar {
+            background: var(--bg-panel);
+            backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sidebar-collapsed {
+            margin-left: -16rem;
+        }
+
+        /* --- Editor-Style Code Blocks --- */
+        .markdown-body pre {
+            background: #0b0c10 !important;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.75rem;
+            position: relative;
+            padding: 3.5rem 1.5rem 1.5rem 1.5rem;
+            margin: 1.5rem 0;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+            overflow-x: auto;
+        }
+
+        .markdown-body pre::before {
+            content: 'Code Snippet';
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.4);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2.5rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            padding-left: 4.5rem;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='54' height='14' viewBox='0 0 54 14'%3E%3Cg fill='none' fill-rule='evenodd' transform='translate(1 1)'%3E%3Ccircle cx='6' cy='6' r='6' fill='%23FF5F56' stroke='%23E0443E' stroke-width='.5'/%3E%3Ccircle cx='26' cy='6' r='6' fill='%23FFBD2E' stroke='%23DEA123' stroke-width='.5'/%3E%3Ccircle cx='46' cy='6' r='6' fill='%2327C93F' stroke='%231AAB29' stroke-width='.5'/%3E%3C/g%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: 1rem center;
+        }
+
+        .markdown-body code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #e2e8f0;
+        }
+
+        .markdown-body {
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+            font-size: 0.95rem;
+            color: #e2e8f0 !important;
+            line-height: 1.75;
+        }
+
+        .markdown-body p { margin-bottom: 1.25rem; color: #cbd5e1; }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 {
+            color: #f8fafc !important;
+            font-weight: 700;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            line-height: 1.3;
+        }
+        .markdown-body h3 { color: #a78bfa !important; font-size: 1.1rem; }
+        .markdown-body ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 1.25rem; }
+        .markdown-body ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 1.25rem; }
+        .markdown-body li { margin-bottom: 0.5rem; color: #e2e8f0; }
+        .markdown-body strong { color: #fff; font-weight: 700; }
+        .markdown-body blockquote {
+            border-left: 4px solid var(--neon-purple);
+            padding-left: 1rem;
+            margin: 1.5rem 0;
+            font-style: italic;
+            color: #94a3b8;
+            background: rgba(139, 92, 246, 0.05);
+            padding: 1rem;
+            border-radius: 0 0.5rem 0.5rem 0;
+        }
+
+        #chat-input {
+            min-height: 44px;
+            max-height: 120px;
+            resize: none;
+            overflow-y: hidden;
+            line-height: 1.5;
+        }
+        #chat-input:focus { overflow-y: auto; }
+
+        #pane-graph { background: radial-gradient(circle at center, #1a1b26 0%, #000000 100%); }
+
+        .gutter { background-color: transparent; cursor: col-resize; position: relative; z-index: 50; }
+        .gutter::after {
+            content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px;
+            background: rgba(255,255,255,0.1); transition: background 0.3s;
+        }
+        .gutter:hover::after { background: var(--neon-purple); box-shadow: 0 0 10px var(--neon-purple); }
 
         .hidden { display: none !important; }
-
-        #sidebar { transition: margin-left 0.3s ease-in-out; }
-        .sidebar-collapsed { margin-left: -16rem; }
-
-        .markdown-body { word-wrap: break-word; }
-        .markdown-body pre {
-            background-color: #1a1b26 !important;
-            padding: 1rem;
-            border-radius: 0.75rem;
-            margin: 0.75rem 0;
-            overflow-x: auto;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .markdown-body code {
-            font-family: 'Fira Code', monospace;
-            font-size: 0.85rem;
-            background: transparent;
-        }
-        .markdown-body :not(pre) > code {
-            background-color: rgba(255, 255, 255, 0.1);
-            padding: 0.2rem 0.4rem;
-            border-radius: 0.25rem;
-            color: #f87171;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-        }
-        .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-msg { animation: fadeIn 0.3s ease-out forwards; }
     </style>
 </head>
-<body class="h-screen w-full flex overflow-hidden">
+<body class="h-screen w-full flex">
 
-    <aside id="sidebar" class="w-64 glass-panel flex flex-col z-30 shrink-0 h-full border-r border-white/5">
-        <div class="h-14 border-b border-white/5 flex items-center px-4 justify-between">
-            <div class="flex items-center gap-2">
-                <div class="w-5 h-5 bg-gradient-to-tr from-blue-500 to-purple-500 rounded"></div>
-                <span class="font-bold text-sm tracking-wide">Git Assistant</span>
+    <aside id="sidebar" class="w-64 glass-sidebar flex flex-col z-30 shrink-0 relative">
+        <div class="h-16 border-b border-white/5 flex items-center px-5 justify-between">
+            <div class="flex items-center gap-3">
+                <span class="font-bold text-sm tracking-wide text-white">Git Assistant</span>
             </div>
-            <button onclick="toggleSidebar()" class="text-gray-400 hover:text-white">
+
+            <button onclick="toggleSidebar()" class="text-gray-500 hover:text-white transition p-1 hover:bg-white/5 rounded">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
             </button>
         </div>
 
-        <div class="p-3">
-            <button onclick="showEmptyState()" class="w-full flex items-center gap-2 px-3 py-2 bg-purple-600/20 text-purple-300 rounded-lg text-xs font-semibold hover:bg-purple-600/30 transition border border-purple-500/20">
-                <span>+</span> New Repository
+        <div class="p-4">
+            <button onclick="showEmptyState()" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 text-gray-200 rounded-xl text-xs font-semibold transition border border-white/5 group">
+                <span class="group-hover:text-purple-400 transition-colors">+</span> New Repository
             </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto px-3 space-y-1" id="history-list">
-            <div class="text-xs text-gray-600 text-center mt-4">Loading history...</div>
-        </div>
+        <div class="flex-1 overflow-y-auto px-3 space-y-1" id="history-list"></div>
 
-        <div class="p-4 border-t border-white/5">
+        <div class="p-4 border-t border-white/5 bg-black/20">
             <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-full bg-gray-700 bg-cover bg-center" style="background-image: url('{{ user.user_metadata.avatar_url }}')"></div>
-                <div class="flex flex-col">
-                    <span class="text-xs font-medium text-gray-300">{{ user.user_metadata.user_name }}</span>
-                    <a href="/logout" class="text-[10px] text-gray-500 hover:text-white text-left transition">Log out</a>
+                <div class="w-8 h-8 rounded-full bg-gray-800 ring-2 ring-white/5 overflow-hidden">
+                    <img src="{{ user.user_metadata.avatar_url }}" class="w-full h-full object-cover">
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs font-semibold truncate text-gray-200">{{ user.user_metadata.user_name }}</p>
+                    <a href="/logout" class="text-[10px] text-gray-500 hover:text-white transition">Sign out</a>
                 </div>
             </div>
         </div>
     </aside>
 
-    <main class="flex-1 relative bg-black flex flex-col h-full overflow-hidden">
+    <main class="flex-1 flex flex-col relative min-w-0 bg-[#050505]">
+
         <div class="absolute top-4 left-4 z-50">
-            <button id="open-sidebar-btn" onclick="toggleSidebar()" class="hidden p-2 bg-gray-800 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 shadow-lg border border-white/10">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            <button id="open-sidebar-btn" onclick="toggleSidebar()" class="hidden p-2 bg-[#13141a] rounded-lg text-gray-400 hover:text-white hover:bg-white/10 border border-white/10 shadow-xl transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
             </button>
         </div>
 
-        <div id="view-empty" class="absolute inset-0 z-40 bg-black flex flex-col items-center justify-center p-6 transition-opacity duration-300">
-            <div class="absolute inset-0 z-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-[#050505] to-[#050505] pointer-events-none"></div>
-            <h1 class="text-3xl font-bold mb-2 relative z-10">What shall we build?</h1>
-            <p class="text-gray-500 mb-8 text-sm relative z-10">Link a GitHub repository to begin analysis.</p>
-            <div class="w-full max-w-lg relative z-10">
-                <input id="repo-input" type="text" placeholder="https://github.com/username/repository"
-                    class="w-full bg-[#13141C] border border-white/10 rounded-xl px-5 py-4 text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition shadow-2xl text-white placeholder-gray-600">
-                <button onclick="startAnalysis()" class="absolute right-2 top-2 bottom-2 bg-white/10 hover:bg-white/20 text-white px-4 rounded-lg text-xs font-medium transition">
-                    Analyze &rarr;
-                </button>
+        <div id="view-empty" class="absolute inset-0 z-40 bg-black flex flex-col items-center justify-center p-6">
+            <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-black to-black pointer-events-none"></div>
+            <h1 class="text-4xl font-bold text-white mb-3 tracking-tight z-10">Repo Intelligence</h1>
+            <p class="text-gray-400 mb-10 text-sm z-10">Visualize structure. Query logic. Understand code.</p>
+
+            <div class="w-full max-w-lg relative z-10 group">
+                <div class="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl opacity-30 group-hover:opacity-60 transition duration-500 blur"></div>
+                <div class="relative flex items-center bg-[#0d0e12] rounded-xl border border-white/10">
+                    <input id="repo-input" type="text" placeholder="https://github.com/username/project"
+                        class="w-full bg-transparent border-none text-white px-6 py-4 text-sm focus:ring-0 placeholder-gray-500">
+                    <button onclick="startAnalysis()" class="mr-2 bg-white/10 hover:bg-white/20 text-white px-5 py-2 rounded-lg text-xs font-medium transition">
+                        Analyze
+                    </button>
+                </div>
             </div>
-            <div id="loading-indicator" class="hidden mt-8 flex flex-col items-center">
-                <div class="w-8 h-8 rounded-full border-2 border-purple-500/30 border-t-purple-500 animate-spin mb-3"></div>
-                <span class="text-xs text-purple-400">Processing Graph...</span>
+
+            <div id="loading-indicator" class="hidden mt-12 flex flex-col items-center z-50">
+                <div class="relative w-12 h-12">
+                    <div class="absolute inset-0 border-t-2 border-purple-500 rounded-full animate-spin"></div>
+                    <div class="absolute inset-2 border-t-2 border-blue-500 rounded-full animate-spin [animation-direction:reverse]"></div>
+                </div>
+                <span class="mt-4 text-xs text-purple-400 font-mono tracking-widest uppercase font-bold text-shadow">Building Knowledge Graph...</span>
             </div>
         </div>
 
-        <div id="view-workspace" class="hidden w-full h-full flex flex-row">
-            <div id="pane-chat" class="h-full flex flex-col min-w-[300px] bg-[#050505]">
-                <div class="h-14 border-b border-white/5 flex items-center px-6 justify-between bg-black/20 backdrop-blur shrink-0">
-                    <span id="active-repo-name" class="font-mono text-sm text-gray-300 truncate">...</span>
-                    <span class="text-[10px] bg-green-500/10 text-green-400 px-2 py-0.5 rounded border border-green-500/20 whitespace-nowrap">Live</span>
+        <div id="view-workspace" class="hidden flex-1 flex h-full">
+            <div id="pane-chat" class="flex flex-col bg-[#0b0c10]">
+                <div class="h-14 border-b border-white/5 flex items-center px-6 justify-between bg-black/20">
+                    <div class="flex items-center gap-2 pl-8">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></span>
+                        <span id="active-repo-name" class="font-mono text-xs text-gray-300">...</span>
+                    </div>
                 </div>
+
                 <div id="chat-container" class="flex-1 overflow-y-auto p-6 space-y-6"></div>
-                <div class="p-4 border-t border-white/10 bg-[#0B0C10] shrink-0">
-                    <div class="flex gap-2">
-                        <input id="chat-input" type="text" placeholder="Ask about the code..."
-                            class="flex-1 bg-[#13141C] border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-purple-500 text-white placeholder-gray-600"
-                            onkeypress="if(event.key === 'Enter') sendMessage()">
-                        <button onclick="sendMessage()" class="bg-purple-600 hover:bg-purple-500 text-white px-4 rounded-lg transition">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+
+                <div class="p-5 border-t border-white/5 bg-[#08090d]">
+                    <div class="relative max-w-4xl mx-auto flex gap-3 items-end">
+                        <textarea id="chat-input" rows="1" placeholder="Ask about the architecture..."
+                            class="flex-1 bg-[#13141a] border border-white/10 rounded-xl px-5 py-3 text-sm focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 text-white placeholder-gray-600 transition-all w-full"></textarea>
+
+                        <button onclick="sendMessage()" class="bg-purple-600 hover:bg-purple-500 text-white p-3 rounded-xl transition-all shadow-lg shadow-purple-900/20 flex items-center justify-center shrink-0 h-[44px] w-[44px]">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg>
                         </button>
                     </div>
                 </div>
             </div>
-            <div id="pane-graph" class="h-full bg-black/50 relative overflow-hidden min-w-[300px]">
-                <div class="absolute top-4 right-4 z-20 pointer-events-none text-right">
-                    <h2 class="text-lg font-bold text-white">Graph View</h2>
-                    <p class="text-[10px] text-gray-500">Interactive Knowledge Base</p>
+
+            <div id="pane-graph" class="relative overflow-hidden w-full h-full">
+                <div class="absolute top-5 right-5 z-20 pointer-events-none flex flex-col items-end">
+                    <h2 class="text-sm font-bold text-white tracking-wide">DEPENDENCY GRAPH</h2>
+                    <p class="text-[10px] text-purple-400 font-mono">LIVE VISUALIZATION</p>
                 </div>
                 <div id="d3-container" class="w-full h-full"></div>
             </div>
@@ -151,19 +237,15 @@
     </main>
 
     <div id="delete-modal" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-        <div class="bg-[#13141C] border border-white/10 w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-fade-in">
-            <div class="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
-                <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                </svg>
+        <div class="bg-[#111216] border border-white/10 w-full max-w-sm rounded-2xl p-6 shadow-2xl animate-msg">
+            <div class="w-10 h-10 bg-red-500/10 rounded-full flex items-center justify-center mb-4">
+                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
             </div>
             <h3 class="text-lg font-bold text-white mb-2">Delete Session?</h3>
-            <p class="text-gray-400 text-sm mb-6 leading-relaxed">
-                Permanently remove this chat history. If this is the last session for this repo, analysis data will be cleaned.
-            </p>
+            <p class="text-gray-400 text-sm mb-6">This will permanently delete the chat history. Repository data is cleaned up if no other sessions exist.</p>
             <div class="flex gap-3">
-                <button onclick="closeDeleteModal()" class="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-sm font-medium transition">Cancel</button>
-                <button id="confirm-delete-btn" class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition">Delete</button>
+                <button onclick="closeDeleteModal()" class="flex-1 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-medium transition">Cancel</button>
+                <button id="confirm-delete-btn" class="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-medium transition shadow-lg shadow-red-900/20">Delete</button>
             </div>
         </div>
     </div>
@@ -171,26 +253,42 @@
     <script>
         let currentSessionId = null;
         let sessionToDelete = null;
-        let splitInstance = null;
+
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
 
         document.addEventListener('DOMContentLoaded', () => {
             loadSessions();
-            initSplit();
-        });
+            Split(['#pane-chat', '#pane-graph'], { sizes: [45, 55], minSize: 320, gutterSize: 8 });
 
-        function initSplit() {
-            splitInstance = Split(['#pane-chat', '#pane-graph'], {
-                sizes: [40, 60],
-                minSize: 300,
-                gutterSize: 8,
-                cursor: 'col-resize'
+            const textarea = document.getElementById('chat-input');
+            textarea.addEventListener('input', function() {
+                this.style.height = 'auto';
+                const newHeight = Math.min(this.scrollHeight, 120);
+                this.style.height = newHeight + 'px';
+                if (this.scrollHeight > 120) {
+                    this.style.overflowY = "auto";
+                } else {
+                    this.style.overflowY = "hidden";
+                }
             });
-        }
+
+            textarea.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+        });
 
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const openBtn = document.getElementById('open-sidebar-btn');
+
             sidebar.classList.toggle('sidebar-collapsed');
+
             if (sidebar.classList.contains('sidebar-collapsed')) {
                 openBtn.classList.remove('hidden');
             } else {
@@ -198,32 +296,94 @@
             }
         }
 
-        function switchView(viewName) {
-            document.getElementById('view-empty').classList.toggle('hidden', viewName === 'workspace');
-            document.getElementById('view-workspace').classList.toggle('hidden', viewName === 'empty');
-        }
+        // --- GRAPH ENGINE (Corrected for Responsive Resizing) ---
+        function renderGraph(data) {
+            const container = document.getElementById('d3-container');
+            container.innerHTML = '';
 
-        async function startAnalysis() {
-            const url = document.getElementById('repo-input').value;
-            if (!url) return;
-            document.getElementById('loading-indicator').classList.remove('hidden');
-            try {
-                const res = await fetch('/api/analyze', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url })
-                });
-                const data = await res.json();
-                document.getElementById('loading-indicator').classList.add('hidden');
-                currentSessionId = data.session_id;
-                await loadSessions();
-                document.getElementById('active-repo-name').innerText = url.split('/').pop();
-                switchView('workspace');
-                setTimeout(() => { if (data.graph) renderGraph(data.graph); }, 100);
-            } catch (e) {
-                alert("Error analyzing repository.");
-                document.getElementById('loading-indicator').classList.add('hidden');
-            }
+            // Initial setup
+            let width = container.clientWidth;
+            let height = container.clientHeight;
+
+            const svg = d3.select("#d3-container").append("svg")
+                .attr("width", "100%") // Use percentage
+                .attr("height", "100%") // Use percentage
+                .attr("viewBox", [0, 0, width, height])
+                .style("background", "transparent")
+                .call(d3.zoom().scaleExtent([0.1, 8]).on("zoom", (e) => g.attr("transform", e.transform)));
+
+            const defs = svg.append("defs");
+            const filter = defs.append("filter").attr("id", "glow");
+            filter.append("feGaussianBlur").attr("stdDeviation", "2.5").attr("result", "coloredBlur");
+            const feMerge = filter.append("feMerge");
+            feMerge.append("feMergeNode").attr("in", "coloredBlur");
+            feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+            const g = svg.append("g");
+
+            const simulation = d3.forceSimulation(data.nodes)
+                .force("link", d3.forceLink(data.links).id(d => d.id).distance(80))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("collide", d3.forceCollide().radius(15).iterations(2));
+
+            const link = g.append("g").selectAll("line").data(data.links).join("line")
+                .attr("stroke", "#475569").attr("stroke-opacity", 0.3).attr("stroke-width", 1);
+
+            const node = g.append("g").selectAll("g").data(data.nodes).join("g")
+                .attr("cursor", "pointer")
+                .call(d3.drag()
+                    .on("start", (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+                    .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; })
+                    .on("end", (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+            node.append("circle")
+                .attr("r", d => d.group === 'root' ? 12 : d.group === 'folder' ? 8 : 5)
+                .attr("fill", d => d.group === 'root' ? '#8b5cf6' : d.group === 'folder' ? '#3b82f6' : '#1e293b')
+                .attr("stroke", d => d.group === 'root' ? '#c4b5fd' : '#60a5fa')
+                .attr("stroke-width", 1.5)
+                .style("filter", "url(#glow)");
+
+            node.append("text").text(d => d.name).attr("x", 14).attr("y", 4)
+                .attr("font-family", "Plus Jakarta Sans, sans-serif").attr("font-size", "10px")
+                .attr("fill", "#94a3b8").style("pointer-events", "none").style("text-shadow", "0 1px 4px black");
+
+            // --- Resize Observer: The Critical Fix ---
+            const resizeObserver = new ResizeObserver(entries => {
+                for (let entry of entries) {
+                    const newWidth = entry.contentRect.width;
+                    const newHeight = entry.contentRect.height;
+
+                    // Update viewBox for responsiveness
+                    svg.attr("viewBox", [0, 0, newWidth, newHeight]);
+
+                    // Update force center
+                    simulation.force("center", d3.forceCenter(newWidth / 2, newHeight / 2));
+
+                    // Re-heat simulation
+                    simulation.alpha(0.3).restart();
+                }
+            });
+            resizeObserver.observe(container);
+
+            // Interaction logic
+            node.on('mouseover', function(event, d) {
+                link.transition().duration(200).style("stroke-opacity", 0.05);
+                node.transition().duration(200).style("opacity", 0.2);
+                d3.select(this).transition().duration(200).style("opacity", 1).attr("r", 15);
+                const connectedIds = new Set(); connectedIds.add(d.id);
+                link.each(l => { if (l.source.id === d.id) connectedIds.add(l.target.id); if (l.target.id === d.id) connectedIds.add(l.source.id); });
+                link.filter(l => l.source.id === d.id || l.target.id === d.id).transition().duration(200).attr("stroke", "#ffffff").style("stroke-opacity", 0.8);
+                node.filter(n => connectedIds.has(n.id)).transition().duration(200).style("opacity", 1);
+            }).on('mouseout', function() {
+                link.transition().duration(300).attr("stroke", "#475569").style("stroke-opacity", 0.3);
+                node.transition().duration(300).style("opacity", 1);
+            });
+
+            simulation.on("tick", () => {
+                link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                node.attr("transform", d => `translate(${d.x},${d.y})`);
+            });
         }
 
         async function loadSessions() {
@@ -231,90 +391,90 @@
             const data = await res.json();
             const list = document.getElementById('history-list');
             list.innerHTML = '';
-            const sessions = data.sessions || [];
-            if (sessions.length === 0) { list.innerHTML = '<div class="text-xs text-gray-600 text-center mt-4">No history yet</div>'; return; }
-
-            sessions.forEach(s => {
+            (data.sessions || []).forEach(s => {
                 const item = document.createElement('div');
-                item.className = "flex items-center justify-between px-3 py-2 text-gray-400 hover:bg-white/5 hover:text-white rounded cursor-pointer text-xs transition min-w-0 mb-1";
-
+                item.className = "flex items-center justify-between px-3 py-2.5 text-gray-400 hover:bg-white/5 hover:text-white rounded-xl cursor-pointer text-xs transition mb-1 group";
                 const title = document.createElement('span');
-                title.className = "truncate flex-1 min-w-0";
-                title.innerText = s.title || "Untitled Chat";
+                title.className = "truncate flex-1 min-w-0 font-medium";
+                title.innerText = s.title || "Untitled";
                 title.onclick = () => loadChat(s.id, s.title);
-
-                const delBtn = document.createElement('button');
-                delBtn.className = "text-gray-500 hover:text-red-500 ml-2 shrink-0 p-1 bg-white/5 rounded-md hover:bg-red-500/10 transition-all";
-                delBtn.innerHTML = `
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                `;
-                delBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    openDeleteModal(s.id);
-                };
-
-                item.appendChild(title);
-                item.appendChild(delBtn);
-                list.appendChild(item);
+                const del = document.createElement('button');
+                del.className = "text-gray-600 hover:text-red-400 ml-2 p-1.5 rounded-lg hover:bg-white/5 transition-colors shrink-0";
+                del.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+                del.onclick = (e) => { e.stopPropagation(); openDeleteModal(s.id); };
+                item.appendChild(title); item.appendChild(del); list.appendChild(item);
             });
         }
 
         async function loadChat(sessionId, title) {
-            // Guard clause: Only send request if it's a different session
-            if (currentSessionId === sessionId) {
-                console.log("Session already active.");
-                return;
-            }
-
+            if (currentSessionId === sessionId) return;
             currentSessionId = sessionId;
             document.getElementById('active-repo-name').innerText = title || "...";
             switchView('workspace');
-            const container = document.getElementById('chat-container');
-            container.innerHTML = '<div class="text-center text-gray-600 text-xs mt-10">Loading...</div>';
+
+            const chatContainer = document.getElementById('chat-container');
+            const graphContainer = document.getElementById('d3-container');
+
+            chatContainer.innerHTML = `
+                <div class="flex flex-col gap-6 p-4 animate-pulse">
+                    <div class="flex gap-4 items-start">
+                        <div class="w-8 h-8 bg-white/5 rounded-lg"></div>
+                        <div class="flex-1 space-y-2">
+                            <div class="h-4 bg-white/5 rounded w-1/4"></div>
+                            <div class="h-16 bg-white/5 rounded w-3/4"></div>
+                        </div>
+                    </div>
+                </div>`;
+
+            graphContainer.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-gray-500 space-y-3">
+                     <div class="relative w-12 h-12">
+                        <div class="absolute inset-0 border-t-2 border-purple-500 rounded-full animate-spin"></div>
+                        <div class="absolute inset-2 border-t-2 border-blue-500 rounded-full animate-spin [animation-direction:reverse]"></div>
+                    </div>
+                    <span class="text-xs font-mono tracking-widest uppercase">Fetching Graph Data...</span>
+                </div>`;
 
             try {
                 const res = await fetch(`/api/sessions/${sessionId}`);
                 const data = await res.json();
-                container.innerHTML = '';
+                chatContainer.innerHTML = '';
                 (data.messages || []).forEach(msg => appendMessage(msg.sender, msg.content));
-                if (data.graph) setTimeout(() => renderGraph(data.graph), 100);
+                if (data.graph) {
+                    setTimeout(() => renderGraph(data.graph), 100);
+                } else {
+                    graphContainer.innerHTML = '<div class="flex items-center justify-center h-full text-gray-600 text-xs font-mono">NO GRAPH DATA FOUND</div>';
+                }
             } catch (e) {
-                container.innerHTML = '<div class="text-center text-red-500 text-xs">Error loading</div>';
+                chatContainer.innerHTML = '<div class="text-red-500 text-xs text-center p-4">Failed to load session.</div>';
             }
         }
 
-        function renderGraph(data) {
-            const container = document.getElementById('d3-container');
-            container.innerHTML = '';
-            const width = container.clientWidth, height = container.clientHeight;
-            const simulation = d3.forceSimulation(data.nodes)
-                .force("link", d3.forceLink(data.links).id(d => d.id).distance(60))
-                .force("charge", d3.forceManyBody().strength(-200))
-                .force("center", d3.forceCenter(width / 2, height / 2))
-                .force("collide", d3.forceCollide().radius(d => d.radius + 5));
-
-            const svg = d3.select("#d3-container").append("svg").attr("width", width).attr("height", height)
-                .call(d3.zoom().scaleExtent([0.1, 4]).on("zoom", (e) => g.attr("transform", e.transform)));
-            const g = svg.append("g");
-            const link = g.append("g").selectAll("line").data(data.links).join("line").attr("stroke", "#fff").attr("stroke-opacity", 0.5);
-            const node = g.append("g").selectAll("circle").data(data.nodes).join("circle").attr("r", d => d.radius)
-                .attr("fill", d => d.group === 'root' ? '#8b5cf6' : d.group === 'folder' ? '#3b82f6' : '#4b5563')
-                .call(d3.drag().on("start", (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-                    .on("drag", (e, d) => { d.fx = e.x; d.fy = e.y; }).on("end", (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
-            const labels = g.append("g").selectAll("text").data(data.nodes).join("text").text(d => d.name).attr("font-size", "10px").attr("fill", "#d4d4d8").attr("dx", 12).attr("dy", 4);
-            simulation.on("tick", () => {
-                link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
-                node.attr("cx", d => d.x).attr("cy", d => d.y);
-                labels.attr("x", d => d.x).attr("y", d => d.y);
-            });
+        async function startAnalysis() {
+            const url = document.getElementById('repo-input').value;
+            if (!url) return;
+            document.getElementById('loading-indicator').classList.remove('hidden');
+            try {
+                const res = await fetch('/api/analyze', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: url})});
+                const data = await res.json();
+                document.getElementById('loading-indicator').classList.add('hidden');
+                currentSessionId = data.session_id;
+                await loadSessions();
+                switchView('workspace');
+                setTimeout(() => { if (data.graph) renderGraph(data.graph); }, 100);
+            } catch (e) {
+                alert("Analysis failed.");
+                document.getElementById('loading-indicator').classList.add('hidden');
+            }
         }
 
         async function sendMessage() {
             const input = document.getElementById('chat-input'), text = input.value.trim();
             if (!text || !currentSessionId) return;
-            appendMessage('user', text); input.value = '';
+            appendMessage('user', text);
+            input.value = '';
+            input.style.height = 'auto';
+
             const aiContentDiv = createStreamingPlaceholder();
             let fullResponse = "", isFirstChunk = true;
             try {
@@ -326,7 +486,12 @@
                     for (const line of lines) if (line.startsWith('data: ')) {
                         const data = JSON.parse(line.slice(6));
                         if (data.content) {
-                            if (isFirstChunk) { aiContentDiv.innerHTML = ""; isFirstChunk = false; }
+                            if (isFirstChunk) {
+                                aiContentDiv.innerHTML = "";
+                                aiContentDiv.classList.remove('italic', 'text-gray-500');
+                                aiContentDiv.classList.add('not-italic', 'text-gray-200');
+                                isFirstChunk = false;
+                            }
                             fullResponse = data.content;
                             aiContentDiv.innerHTML = marked.parse(fullResponse);
                             aiContentDiv.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
@@ -334,42 +499,38 @@
                     }
                     document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
                 }
-            } catch (e) { aiContentDiv.innerHTML = "Error connecting."; }
+            } catch (e) { aiContentDiv.innerHTML = "Connection Error."; }
         }
 
         function appendMessage(sender, text) {
-            const container = document.getElementById('chat-container'), isAi = sender.toLowerCase() === 'ai' || sender.toLowerCase() === 'assistant';
-            marked.setOptions({highlight: (c, l) => hljs.highlight(c, {language: hljs.getLanguage(l) ? l : 'plaintext'}).value});
+            const container = document.getElementById('chat-container'), isAi = sender.toLowerCase().includes('ai');
             const div = document.createElement('div');
-            div.className = `flex gap-3 ${isAi ? '' : 'flex-row-reverse'} animate-fade-in mb-4`;
-            div.innerHTML = `<div class="w-6 h-6 rounded flex-shrink-0 flex items-center justify-center text-[10px] font-bold ${isAi ? 'bg-purple-600/50 text-purple-100' : 'bg-blue-600/50 text-blue-100'}">${isAi ? 'AI' : 'Me'}</div>
-                <div class="max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed shadow-md markdown-body ${isAi ? 'bg-gray-800/50 text-gray-300 rounded-tl-none border border-white/5' : 'bg-blue-600/20 text-blue-100 rounded-tr-none border border-blue-500/20'}">${isAi ? marked.parse(text) : text}</div>`;
+            div.className = `flex gap-3 ${isAi ? '' : 'flex-row-reverse'} animate-msg mb-4`;
+
+            const userBubbleClass = "bg-purple-900/40 text-purple-100 border border-purple-500/30 shadow-lg shadow-purple-900/10";
+            const aiBubbleClass = "bg-[#15161c] text-gray-200 border border-white/5";
+
+            div.innerHTML = `
+                <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] font-bold ${isAi ? 'bg-purple-600/20 text-purple-400 ring-1 ring-purple-500/20' : 'bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/20'}">${isAi ? 'AI' : 'ME'}</div>
+                <div class="max-w-[85%] p-3.5 rounded-2xl text-[13px] leading-relaxed markdown-body ${isAi ? aiBubbleClass : userBubbleClass}">
+                    ${isAi ? marked.parse(text) : text}
+                </div>`;
             container.appendChild(div); container.scrollTop = container.scrollHeight;
             if (isAi) div.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
         }
 
         function createStreamingPlaceholder() {
-            const container = document.getElementById('chat-container');
-            const div = document.createElement('div');
-            div.className = "flex gap-3 animate-fade-in mb-4";
-            div.innerHTML = `<div class="w-6 h-6 rounded bg-purple-600/50 text-purple-100 flex items-center justify-center text-[10px] font-bold">AI</div>
-                <div class="max-w-[80%] p-3 rounded-2xl text-sm italic text-gray-500 markdown-body bg-gray-800/50 content-placeholder">Thinking...</div>`;
+            const container = document.getElementById('chat-container'), div = document.createElement('div');
+            div.className = "flex gap-3 mb-4";
+            div.innerHTML = `<div class="w-8 h-8 rounded-lg bg-purple-600/20 text-purple-400 flex items-center justify-center text-[10px] font-bold ring-1 ring-purple-500/20">AI</div><div class="max-w-[85%] p-3.5 rounded-2xl text-[13px] italic text-gray-500 bg-[#15161c] content-placeholder">Thinking...</div>`;
             container.appendChild(div); container.scrollTop = container.scrollHeight;
             return div.querySelector('.content-placeholder');
         }
 
-        function openDeleteModal(id) {
-            sessionToDelete = id; document.getElementById('delete-modal').classList.remove('hidden');
-            document.getElementById('confirm-delete-btn').onclick = async () => { await executeDelete(); };
-        }
+        function openDeleteModal(id) { sessionToDelete = id; document.getElementById('delete-modal').classList.remove('hidden'); document.getElementById('confirm-delete-btn').onclick = async () => { await fetch(`/api/sessions/${sessionToDelete}`, {method: 'DELETE'}); if (currentSessionId === sessionToDelete) showEmptyState(); closeDeleteModal(); loadSessions(); }; }
         function closeDeleteModal() { document.getElementById('delete-modal').classList.add('hidden'); }
-        async function executeDelete() {
-            if (!sessionToDelete) return;
-            const res = await fetch(`/api/sessions/${sessionToDelete}`, { method: 'DELETE' });
-            if (res.ok) { if (currentSessionId === sessionToDelete) showEmptyState(); closeDeleteModal(); await loadSessions(); }
-        }
-
         function showEmptyState() { currentSessionId = null; switchView('empty'); }
+        function switchView(v) { document.getElementById('view-empty').classList.toggle('hidden', v==='workspace'); document.getElementById('view-workspace').classList.toggle('hidden', v==='empty'); }
     </script>
 </body>
 </html>
