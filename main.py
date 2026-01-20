@@ -26,6 +26,7 @@ load_dotenv()
 redis_aconn = aredis.from_url(os.getenv("REDIS_URL"))
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
+base_url = os.getenv("BASE_URL", "http://localhost:8000")
 
 if not supabase_url or not supabase_key:
     raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env file")
@@ -112,7 +113,7 @@ def login_github():
     data = supabase.auth.sign_in_with_oauth({
         "provider": "github",
         "options": {
-            "redirect_to": "http://localhost:8000/auth/callback",
+            "redirect_to": f"{base_url}/auth/callback",
             "scopes": "repo user"
         }
     })

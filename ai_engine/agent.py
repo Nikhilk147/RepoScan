@@ -282,6 +282,3 @@ builder.add_edge("technical",END)
 builder.add_edge("general_answer",END)
 
 graph = builder.compile(checkpointer = SupabaseSaver())
-
-
-

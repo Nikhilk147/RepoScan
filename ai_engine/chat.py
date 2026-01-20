@@ -22,7 +22,7 @@ async def generate_response(session_id:int,text:str):
         state = {
             "commit_id": repo_details["commit_id"],
             "repo_name":repo_details["repo_name"],
-            "files_path": repo_details["files_list"],
+            "files_path": [node["path"] for node in repo_details["files_list"]],
             "user_query": text
         }
     else:

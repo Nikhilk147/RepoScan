@@ -3,8 +3,8 @@ import redis
 from dotenv import load_dotenv
 import json
 import time
-from graph_db import Neo4jHandler
-from graph import GraphBuilder
+from ai_engine.graph_db import Neo4jHandler
+from ai_engine.graph import GraphBuilder
 import asyncio
 
 import multiprocessing
