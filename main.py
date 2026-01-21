@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from pydantic import BaseModel
+import asyncio
 import redis.asyncio as aredis
 import uvicorn
 from ai_engine.graph import GraphBuilder

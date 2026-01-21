@@ -1,0 +1,57 @@
+# --- Python Cache & Bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# --- Virtual Environments (Crucial to exclude) ---
+# Never copy local venvs; Docker builds its own environment
+venv/
+.venv/
+env/
+ENV/
+
+# --- Version Control & Git ---
+.git/
+.gitignore
+.gitattributes
+
+# --- Environment Variables & Secrets (SECURITY) ---
+# Prevent leaking secrets into the image layers
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# --- IDE & OS Metadata ---
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Docker & Local Dev Configuration ---
+# Exclude build configs from the image itself
+Dockerfile*
+docker-compose.yml
+docker-compose.*.yml
+.dockerignore
+
+qdrant_storage
+test.py
+*.png

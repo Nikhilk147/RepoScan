@@ -171,7 +171,7 @@ def neo4j_node(state:RepoState):
     :param state:
     :return:
     """
-    selected_files = [file for file in state["files_path"] if file.endswith(".py")]
+    selected_files = state["selected_files"]
 
     files = neo4j_handler.search_files(repo_name= state["repo_name"],commit_id= state["commit_id"],files = selected_files)
 
