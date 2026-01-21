@@ -139,7 +139,7 @@ def auth_callback(code:str):
             httponly=True,
             samesite="lax",
             path="/",
-            secure=False
+            secure=True
         )
         return redirect
     except Exception as e:
