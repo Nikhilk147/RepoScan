@@ -2,21 +2,15 @@ import base64
 import os
 import json
 from fastapi import FastAPI, HTTPException, Request,Depends
-
-
-
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, RedirectResponse,StreamingResponse
 from fastapi.templating import Jinja2Templates
-
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from pydantic import BaseModel
 import asyncio
 import redis.asyncio as aredis
 import uvicorn
-
-
 from ai_engine.graph import GraphBuilder
 from ai_engine.chat import generate_response
 from helper.commit import get_commit_sha,check_commit_id
@@ -36,47 +30,14 @@ supabase_key = os.getenv("SUPABASE_KEY")
 base_url = os.getenv("BASE_URL", "http://localhost:7860")
 
 if not supabase_url or not supabase_key:
-
-
-
-
-
     raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env file")
 
 
 app = FastAPI()
 supabase: Client = create_client(supabase_url, supabase_key)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 templates = Jinja2Templates(directory="templates")
-
 # app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
 
 class RepoRequest(BaseModel):
     url:str
@@ -99,13 +60,10 @@ async def get_current_user(request:Request):
 
     token = request.cookies.get("access_token","")
 
-
-
     if not token:
         return None
     try:
         user_response = supabase.auth.get_user(token)
-
         return user_response.user
     except Exception:
         return None
@@ -121,7 +79,6 @@ async def require_user(user = Depends(get_current_user)):
     return user
 
 # -------------------------------------------------------- ROUTES -----------------------------
-
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, user = Depends(get_current_user)):
@@ -169,16 +126,11 @@ def auth_callback(code:str):
     try:
 
         res = supabase.auth.exchange_code_for_session({"auth_code":code})
-
-
         provider_token = res.session.provider_token
-
         if provider_token:
             supabase.table("profiles").update({
                 "github_token": provider_token
             }).eq("id",res.user.id).execute()
-
-
 
         redirect = RedirectResponse(url ="/dashboard")
         redirect.set_cookie(
@@ -197,6 +149,7 @@ def auth_callback(code:str):
 
 @app.get("/logout")
 def logout():
+    response = RedirectResponse(url="/")
     response.delete_cookie("access_token")
     return response
 
@@ -206,11 +159,6 @@ async def get_sessions(user = Depends(require_user)):
     """Fetch all the conversation from database"""
 
     response = (supabase.table("chat_sessions").select("*").eq("user_id",user.id).order("created_at",desc=True).execute())
-
-
-
-
-
     return {"sessions": response.data}
 
 
@@ -220,18 +168,10 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
     """Fetch the content of chat by session_id"""
     try:
         profile_resp = supabase.table("profiles").select("github_token").eq("id", user.id).single().execute()
-
-
         github_token = profile_resp.data.get('github_token')
         commit_info = check_commit_id(session_id = session_id,client = supabase,github_token=github_token)
-
-
-
-
-
         graph_data = None
         print(f'commit info received: {commit_info}')
-
         if not commit_info["is_latest"]:
             ##-------------------------------------------------------BLocking--------------------------------
             job_id = f"{user.id}:{session_id}"
@@ -239,16 +179,14 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
             job_details = {
                 "job_id": job_id,
                 "url": commit_info["repo_url"],
+                "session_id": session_id,
+                "github_token": github_token,
+                "user_id": user.id,
                 "commit_id": commit_info["latest_commit"],
                 "is_updated": True
             }
-
             graph_data = await redis_publish(job_details)
             supabase.table("repositories").update({"latest_commit_id": commit_info["latest_commit"]})
-
-
-
-
 
 
         # -------------------------------load conversation_history -------------------------------
@@ -263,20 +201,14 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
                     "links": data.get("links")
                 }
         db_row = supabase.table("chat_messages").select("*").eq("session_id", session_id).execute()
-
-
-
-
         if not db_row.data:
             return {"messages": [],"graph": graph_data}
         db_row = db_row.data[0]
         encoded_state = db_row.get("state")
         checkpoint_type = db_row.get("checkpoint_type")
 
-
         if not encoded_state:
             return {"messages":[],"graph": graph_data}
-
         state_bytes = base64.b64decode(encoded_state)
         state = graph.checkpointer.serde.loads_typed((checkpoint_type,state_bytes))
 
@@ -293,12 +225,12 @@ async def get_session_history(session_id:int ,user = Depends(require_user)):
     except Exception as e:
         print(f"Error fetching session history: {e}")
         raise
+
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: int, user=Depends(require_user)):
     try:
         # 1. Fetch the session to get the repo_id
         session_res = supabase.table("chat_sessions").select('repository_id').eq("id", session_id).execute()
-
         if not session_res.data:
             raise HTTPException(status_code=404, detail="Session not found")
 
@@ -306,17 +238,13 @@ async def delete_session(session_id: int, user=Depends(require_user)):
 
         # 2. Fetch the repository data
         repo_res = supabase.table("repositories").select("*").eq("id", repo_id).single().execute()
-
-
         if not repo_res.data:
             # If repo is already gone, just delete the session
             supabase.table("chat_sessions").delete().eq("id", session_id).execute()
-
             return {"status": "success", "cleaned_up": False}
 
         repo_db_row = repo_res.data
         n_session = repo_db_row.get("n_sessions", 0)
-
 
         if n_session <= 1:
             # CONDITION: Last session -> Full Cleanup
@@ -343,17 +271,12 @@ async def delete_session(session_id: int, user=Depends(require_user)):
 
             # D. Delete Repository Record
             supabase.table("repositories").delete().eq("id", repo_id).execute()
-
-
-
         else:
             # CONDITION: Reduce session count
             supabase.table("repositories").update({"n_sessions": n_session - 1}).eq("id", repo_id).execute()
 
-
         # 3. Delete the session itself
         supabase.table("chat_sessions").delete().eq("id", session_id).execute()
-
 
         print(f"Session {session_id} deleted successfully")
         return {
@@ -363,6 +286,7 @@ async def delete_session(session_id: int, user=Depends(require_user)):
 
     except Exception as e:
         print(f"Error deleting session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/analyze")
@@ -378,10 +302,6 @@ async def analyze_repo(request: RepoRequest,user = Depends(require_user)):
     profile_resp = supabase.table("profiles").select("github_token").eq("id",user.id).single().execute()
     github_token = profile_resp.data.get('github_token')
     commit_sha = get_commit_sha(repo_url = request.url,github_token=github_token)
-
-
-
-
     repo_save = {
 
         "n_name" : request.url.split("/")[-1].replace(".git",""),
@@ -389,28 +309,22 @@ async def analyze_repo(request: RepoRequest,user = Depends(require_user)):
         "n_latest_commit_id": commit_sha
     }
     repo = supabase.rpc("upsert_repo_increment",repo_save).execute()
-
-
-
     repo_id = repo.data["id"]
-
     session_save = {
         "user_id":user.id,
         "repository_id": repo_id,
         "title": request.url.split("/")[-1].replace(".git","")
     }
     session_res = supabase.table("chat_sessions").insert(session_save).execute()
-
-
     session_id = session_res.data[0]["id"]
-
-
     if repo.data["new_or_updated"]:
 
         ##-------------------------------------------------------BLocking--------------------------------
         job_id = f"{user.id}:{session_id}"
         job_details = {
             "job_id": job_id,
+            "url": request.url,
+            "session_id": session_id,
             "github_token": github_token,
             "user_id": user.id,
             "commit_id": commit_sha,
@@ -423,11 +337,9 @@ async def analyze_repo(request: RepoRequest,user = Depends(require_user)):
         graph_data = await graph_builder.build_repo_graph_frontend(request.url,github_token)
 
 
-
     return {"session_id":session_id,
             "message": "Repo analyzed successfully",
             "graph": graph_data}
-
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest,user = Depends(require_user)):
@@ -439,6 +351,9 @@ async def chat(request: ChatRequest,user = Depends(require_user)):
             async for content in generate_response(request.session_id, request.text):
                 data = json.dumps({"content": content})
                 yield f"data: {data}\n\n"
+        except Exception as e:
+            error_data = json.dumps({"error": str(e)})
+            yield f"data: {error_data}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -447,3 +362,4 @@ async def chat(request: ChatRequest,user = Depends(require_user)):
 if __name__ == "__main__":
 
     uvicorn.run(app)
+
