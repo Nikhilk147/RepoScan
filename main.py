@@ -37,7 +37,7 @@ app = FastAPI()
 supabase: Client = create_client(supabase_url, supabase_key)
 
 templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class RepoRequest(BaseModel):
     url:str
