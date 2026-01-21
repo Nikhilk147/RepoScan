@@ -17,7 +17,7 @@ RUN useradd -m -u 1000 user
 
 # Switch to the "user" user
 USER user
-
+ENV PYTHONUNBUFFERED=1
 # Set home to the user's home directory
 ENV HOME=/home/user \
     PATH=/home/user/.local/bin:$PATH
