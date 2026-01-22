@@ -1,18 +1,20 @@
 fastapi
 uvicorn
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+sentence-transformers
 python-dotenv
 requests
 supabase
 jinja2
-starlette
-langchain-huggingface
 langchain-groq
 langgraph
 redis
 langsmith
 neo4j
 qdrant-client
-sentence-transformers
+
 langchain-text-splitters
 langchain_core
 langchain

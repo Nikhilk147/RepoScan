@@ -28,7 +28,7 @@ redis_conn = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 async def build_graph(repo_detail,commit_id):
     owner = repo_detail["owner"]
     repo = repo_detail["Repo_name"]
-    print(repo_detail)
+
 
     file_list = [node["path"] for node in repo_detail["nodes"] if node["path"].endswith(".py")]
     neo4j_handler = Neo4jHandler()
@@ -36,7 +36,7 @@ async def build_graph(repo_detail,commit_id):
         neo4j_handler.add_owner(owner_name=owner)
         neo4j_handler.add_repo(owner_name=owner,repo_name=repo)
         neo4j_handler.add_commit(repo_name=repo,owner_name=owner,commit_id=commit_id)
-        print(file_list)
+
         for f in file_list:
             neo4j_handler.add_file(repo_name=repo,file_path=f,owner_name= owner,commit_id = commit_id)
         neo4j_handler.create_relations(repo_name =repo,owner_name = owner, nodes=repo_detail["nodes"], preprocessed_repo = repo_detail,commit_id=commit_id)

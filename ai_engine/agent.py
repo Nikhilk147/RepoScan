@@ -1,7 +1,6 @@
 import os
 from typing import TypedDict
-from langchain_core.messages import BaseMessage, AIMessage
-from langchain_huggingface import HuggingFaceEndpoint
+
 from langchain_groq import ChatGroq
 from resources.router import RouterOutput,router_prompt
 from typing import List, Optional,LiteralString,Annotated,Literal,Dict
@@ -14,9 +13,7 @@ from langgraph.graph import StateGraph, add_messages,START,END
 from langsmith import traceable
 from helper.checkpointer import SupabaseSaver
 from resources.summarizer import summary_prompt
-#TODO: Build a RAG pipeline. It should take retrieve the structure(calls,imports and definitions) from neo4j.
-#TODO: Perform similarly search using Qdrant. Provide Neo4j output of similarity and query of user
-#TODO: Use persistence method on langgraph and integrate with supabase..If needed change the schema in supabase
+
 
 neo4j_handler = Neo4jHandler()
 
@@ -84,7 +81,7 @@ def rerank_chunks(hits, query,selected_files,confidence_score,top_k = 8):
     :return:
     """
     reranked = []
-    print(hits.points)
+
 
     for h in hits.points:
         payload = h.payload

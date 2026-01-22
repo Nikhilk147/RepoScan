@@ -13,7 +13,7 @@ supabase:Client = create_client(os.getenv("SUPABASE_URL"),os.getenv("SUPABASE_KE
 
 async def generate_response(session_id:int,text:str):
     history = supabase.table("chat_messages").select("*").eq("session_id",session_id).execute()
-    print(history)
+
     if  len(history.data) == 0:
         repo_id = supabase.table("chat_sessions").select("repository_id").eq("id", session_id).single().execute()
         repo_url = supabase.table("repositories").select("full_name").eq("id",repo_id.data["repository_id"]).execute()

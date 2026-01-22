@@ -12,8 +12,7 @@ qdrant_client = QdrantClient(url=os.getenv("QDRANT_ENDPOINT"),api_key=os.getenv(
 import redis
 redis_conn = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
-#TODO: Integrate with frontend
-#TODO: Find a possible way to integrate with Neo4j
+
 
 class CodeAnalyzer(ast.NodeVisitor):
     def __init__(self):
@@ -157,8 +156,7 @@ class GraphBuilder:
                 self.id_counter+=1
 
 
-            print(f"Nodes: {self.nodes}")
-            print(f"Links: {self.links}")
+
 
 
             return {"nodes":self.nodes,"links":self.links}

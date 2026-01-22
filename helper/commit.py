@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
-print(supabase_url)
+
 supabase: Client = create_client(supabase_url, supabase_key)
 def get_commit_sha(repo_url,github_token):
     """
@@ -41,7 +41,7 @@ def check_commit_id(session_id,client, github_token ):
     repo = client.table("repositories").select("full_name","latest_commit_id").eq("id",repo_id.data["repository_id"]).single().execute()
     repo_url = repo.data["full_name"]
     db_sha = repo.data["latest_commit_id"]
-    print(db_sha)
+
     github_sha = get_commit_sha(repo_url, github_token=github_token)
 
     if db_sha == github_sha:

@@ -8,7 +8,6 @@ from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from pydantic import BaseModel
-import asyncio
 import redis.asyncio as aredis
 import uvicorn
 from ai_engine.graph import GraphBuilder
@@ -23,10 +22,11 @@ from ai_engine.graph_db import Neo4jHandler
 
 # Load environment variables
 load_dotenv()
+# redis_aconn = aredis.from_url(os.getenv("REDIS_URL"))
 redis_aconn = aredis.from_url(os.getenv("REDIS_URL"))
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
-base_url = os.getenv("BASE_URL", "http://localhost:8000")
+base_url = os.getenv("BASE_URL", "http://localhost:7860")
 
 if not supabase_url or not supabase_key:
     raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in .env file")
@@ -165,61 +165,65 @@ async def get_sessions(user = Depends(require_user)):
 @app.get("/api/sessions/{session_id}")
 async def get_session_history(session_id:int ,user = Depends(require_user)):
     """Fetch the content of chat by session_id"""
+    try:
+        profile_resp = supabase.table("profiles").select("github_token").eq("id", user.id).single().execute()
+        github_token = profile_resp.data.get('github_token')
+        commit_info = check_commit_id(session_id = session_id,client = supabase,github_token=github_token)
+        graph_data = None
+        print(f'commit info received: {commit_info}')
+        if not commit_info["is_latest"]:
+            ##-------------------------------------------------------BLocking--------------------------------
+            job_id = f"{user.id}:{session_id}"
 
-    profile_resp = supabase.table("profiles").select("github_token").eq("id", user.id).single().execute()
-    github_token = profile_resp.data.get('github_token')
-    commit_info = check_commit_id(session_id = session_id,client = supabase,github_token=github_token)
-    graph_data = None
-    if not commit_info["is_latest"]:
-        ##-------------------------------------------------------BLocking--------------------------------
-        job_id = f"{user.id}:{session_id}"
-
-        job_details = {
-            "job_id": job_id,
-            "url": commit_info["repo_url"],
-            "session_id": session_id,
-            "github_token": github_token,
-            "user_id": user.id,
-            "commit_id": commit_info["latest_commit"],
-            "is_updated": True
-        }
-        graph_data = await redis_publish(job_details)
-        supabase.table("repositories").update({"latest_commit_id": commit_info["latest_commit"]})
-
-
-    # -------------------------------load conversation_history -------------------------------
-    db_row = supabase.table("chat_messages").select("*").eq("session_id",session_id).execute()
-    if not db_row.data:
-        return {"messages": []}
-    db_row = db_row.data[0]
-    encoded_state = db_row.get("state")
-    checkpoint_type = db_row.get("checkpoint_type")
-
-    if not encoded_state:
-        return {"messages":[]}
-    state_bytes = base64.b64decode(encoded_state)
-    state = graph.checkpointer.serde.loads_typed((checkpoint_type,state_bytes))
-
-    raw_msgs = state.get('channel_values').get("messages",[])
-
-    formatted_msgs = []
-    for m in raw_msgs:
-        formatted_msgs.append({
-            "sender":"ai" if m.type == "ai" else "user",
-            "content": m.content
-        })
-    if not graph_data:
-
-        data = await redis_aconn.get(f"repo_details:{commit_info["repo_url"]}")
-        if data:
-            data = json.loads(data)
-            graph_data = {
-                "nodes": data.get("files_list"),
-                "links": data.get("links")
+            job_details = {
+                "job_id": job_id,
+                "url": commit_info["repo_url"],
+                "session_id": session_id,
+                "github_token": github_token,
+                "user_id": user.id,
+                "commit_id": commit_info["latest_commit"],
+                "is_updated": True
             }
+            graph_data = await redis_publish(job_details)
+            supabase.table("repositories").update({"latest_commit_id": commit_info["latest_commit"]})
 
 
-    return {"messages": formatted_msgs,"graph": graph_data}
+        # -------------------------------load conversation_history -------------------------------
+        if not graph_data:
+
+            data = await redis_aconn.get(f"repo_details:{commit_info['repo_url']}")
+
+            if data:
+                data = json.loads(data)
+                graph_data = {
+                    "nodes": data.get("files_list"),
+                    "links": data.get("links")
+                }
+        db_row = supabase.table("chat_messages").select("*").eq("session_id", session_id).execute()
+        if not db_row.data:
+            return {"messages": [],"graph": graph_data}
+        db_row = db_row.data[0]
+        encoded_state = db_row.get("state")
+        checkpoint_type = db_row.get("checkpoint_type")
+
+        if not encoded_state:
+            return {"messages":[],"graph": graph_data}
+        state_bytes = base64.b64decode(encoded_state)
+        state = graph.checkpointer.serde.loads_typed((checkpoint_type,state_bytes))
+
+        raw_msgs = state.get('channel_values').get("messages",[])
+
+        formatted_msgs = []
+        for m in raw_msgs:
+            formatted_msgs.append({
+                "sender":"ai" if m.type == "ai" else "user",
+                "content": m.content
+            })
+
+        return {"messages": formatted_msgs,"graph": graph_data}
+    except Exception as e:
+        print(f"Error fetching session history: {e}")
+        raise
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: int, user=Depends(require_user)):
@@ -355,5 +359,5 @@ async def chat(request: ChatRequest,user = Depends(require_user)):
 
 
 if __name__ == "__main__":
-    # Use host="0.0.0.0" to make it accessible if testing from other devices
-    uvicorn.run(app, port=8000)
+
+    uvicorn.run(app)

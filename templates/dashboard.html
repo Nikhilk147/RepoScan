@@ -453,17 +453,43 @@
         async function startAnalysis() {
             const url = document.getElementById('repo-input').value;
             if (!url) return;
+
             document.getElementById('loading-indicator').classList.remove('hidden');
+
             try {
-                const res = await fetch('/api/analyze', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: url})});
+                const res = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: url})
+                });
                 const data = await res.json();
+
                 document.getElementById('loading-indicator').classList.add('hidden');
+
                 currentSessionId = data.session_id;
+
+                // --- FIX BEGINS ---
+
+                // 1. Explicitly clear the old chat messages
+                document.getElementById('chat-container').innerHTML = '';
+
+                // 2. Update the header title immediately (extract from URL)
+                // This ensures the top bar doesn't show the old repo name
+                const repoName = url.split('/').filter(Boolean).pop().replace('.git', '');
+                document.getElementById('active-repo-name').innerText = repoName;
+
+                // --- FIX ENDS ---
+
                 await loadSessions();
                 switchView('workspace');
-                setTimeout(() => { if (data.graph) renderGraph(data.graph); }, 100);
+
+                setTimeout(() => {
+                    if (data.graph) renderGraph(data.graph);
+                }, 100);
+
             } catch (e) {
                 alert("Analysis failed.");
+                console.error(e);
                 document.getElementById('loading-indicator').classList.add('hidden');
             }
         }
