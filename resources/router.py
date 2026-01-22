@@ -6,7 +6,7 @@ from typing import List, Optional,Literal
 
 class RouterOutput(BaseModel):
     intent: Literal["technical","general"] = Field(description= "Intent of the user query. General or technical about the repo")
-    confidence: float = Field(description="How llm is confident about the selected files",gt=0,le=1)
+    confidence: float = Field(description="How llm is confident about the selected files",ge=0,le=1)
     files : list[str] = Field(description="List of selected files relevant to the user query.")
     answer: Optional[str] = Field(description="Answer to the query if query belongs to the general category.")
 
