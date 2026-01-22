@@ -176,10 +176,11 @@ class Neo4jHandler:
                 MATCH (f) - [:IMPORTS] -> (n)
                 RETURN n.path
             """
+        python_files = [file for file in files if file.endswith(".py")]
         result = set(files)
         with self.driver.session() as session:
 
-            for file_path in files:
+            for file_path in python_files:
                 response = session.run(query = query,name = repo_name,commit_id = commit_id,path = file_path)
 
                 for file in response:
