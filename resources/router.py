@@ -38,6 +38,7 @@ router_prompt = ChatPromptTemplate.from_messages(
     - If the query is not about the repository, classify it as "general".
     - If technical, select the minimum number of relevant files.
     - Provide a confidence score between 0.0 and 1.0.
+    - If there is a need to access the content of the repository to answer the query set the intent technical with potential files which can have the required content to answer.
     """),
         ("user",
          """
@@ -50,9 +51,8 @@ router_prompt = ChatPromptTemplate.from_messages(
     Decide:
     1. Is the intent "general" or "technical"?
     2. If technical, which files are relevant?
-    3. Provide a confidence score per file.
-    4. If general, provide a direct answer.
-    5. Intent should be technical if query is about repository and need repository details to answer.
+    3. If general, provide a direct answer.
+    4. Intent should be technical if query is about repository and need repository details to answer.
     Return ONLY valid JSON matching the schema.
 
     
