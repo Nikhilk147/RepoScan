@@ -468,17 +468,9 @@
 
                 currentSessionId = data.session_id;
 
-                // --- FIX BEGINS ---
-
-                // 1. Explicitly clear the old chat messages
                 document.getElementById('chat-container').innerHTML = '';
-
-                // 2. Update the header title immediately (extract from URL)
-                // This ensures the top bar doesn't show the old repo name
                 const repoName = url.split('/').filter(Boolean).pop().replace('.git', '');
                 document.getElementById('active-repo-name').innerText = repoName;
-
-                // --- FIX ENDS ---
 
                 await loadSessions();
                 switchView('workspace');
@@ -528,6 +520,18 @@
             } catch (e) { aiContentDiv.innerHTML = "Connection Error."; }
         }
 
+        // --- NEW: Helper to sanitize User Input ---
+        function escapeHtml(text) {
+            if (!text) return text;
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // --- UPDATED: Append Message safely ---
         function appendMessage(sender, text) {
             const container = document.getElementById('chat-container'), isAi = sender.toLowerCase().includes('ai');
             const div = document.createElement('div');
@@ -536,12 +540,20 @@
             const userBubbleClass = "bg-purple-900/40 text-purple-100 border border-purple-500/30 shadow-lg shadow-purple-900/10";
             const aiBubbleClass = "bg-[#15161c] text-gray-200 border border-white/5";
 
+            // If AI -> render Markdown
+            // If User -> escape HTML, then convert newlines to <br>
+            const content = isAi 
+                ? marked.parse(text) 
+                : escapeHtml(text).replace(/\n/g, '<br>');
+
             div.innerHTML = `
                 <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] font-bold ${isAi ? 'bg-purple-600/20 text-purple-400 ring-1 ring-purple-500/20' : 'bg-blue-600/20 text-blue-400 ring-1 ring-blue-500/20'}">${isAi ? 'AI' : 'ME'}</div>
                 <div class="max-w-[85%] p-3.5 rounded-2xl text-[13px] leading-relaxed markdown-body ${isAi ? aiBubbleClass : userBubbleClass}">
-                    ${isAi ? marked.parse(text) : text}
+                    ${content}
                 </div>`;
-            container.appendChild(div); container.scrollTop = container.scrollHeight;
+            
+            container.appendChild(div); 
+            container.scrollTop = container.scrollHeight;
             if (isAi) div.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
         }
 
