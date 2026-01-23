@@ -48,7 +48,7 @@ Simply connect your GitHub account and start exploring your repositories with AI
 ## Technology Stack
 
 - **Frontend**: HTML, CSS, JavaScript
-- **Backend**: Python (Flask/FastAPI)
+- **Backend**: Python (FastAPI)
 - **AI/ML**: Hugging Face Transformers, Large Language Models
 - **Authentication**: GitHub OAuth
 - **Deployment**: Hugging Face Spaces
@@ -159,21 +159,6 @@ DEBUG=True
 PORT=5000
 ```
 
-### Generate Secret Key
-
-For the `SECRET_KEY`, you can generate a secure random string:
-
-```python
-# Run this in Python terminal
-import secrets
-print(secrets.token_hex(32))
-```
-
----
-
-## Usage
-
-### Running Locally
 
 1. **Ensure your virtual environment is activated**
 
