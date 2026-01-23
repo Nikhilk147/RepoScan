@@ -264,7 +264,8 @@ builder.add_node("general_answer",answer_node)
 
 
 #------------------Edges ----------------
-builder.add_edge(START,"router")
+builder.add_edge(START,"summarize")
+builder.add_edge("summarize","router")
 builder.add_conditional_edges(
     "router",
     router_func,
