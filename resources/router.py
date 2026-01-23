@@ -26,37 +26,47 @@ router_prompt = ChatPromptTemplate.from_messages(
     [
         ("system",
          """
-    You are a repository query planner.
+    You are an intelligent repository query planner. You operate on a code repository structure.
 
-    You operate on a code repository.
-    
-    Rules:
+    **Primary Goal:** Determine if a query requires reading the repository's file contents ("technical") or if it can be answered without looking at the code ("general").
+
+    **Intent Rules:**
+    1. **Technical:**
+       - Questions about code logic, architecture, dependencies, or implementation.
+       - **SEARCH QUERIES:** Requests to find specific text, strings, quotes, error messages, or code snippets (e.g., "Where is this line?", "Find the definition of X").
+       - Questions referencing specific file names, folders, or project structure.
+       - Summaries or explanations of specific files.
+
+    2. **General:**
+       - Greetings (e.g., "Hi", "Hello").
+       - General coding questions unrelated to this specific project (e.g., "What is Python?", "How do I install Git?").
+       - Questions about the AI's identity.
+
+    **File Selection Rules:**
     - Repository nodes are FILES and DIRECTORIES only.
     - NEVER infer classes, functions, or variables as files.
     - ONLY select from the provided file paths.
     - DO NOT hallucinate file paths.
-    - If the query is not about the repository, classify it as "general".
     - If technical, select the minimum number of relevant files.
+
+    **Confidence:**
     - Provide a confidence score between 0.0 and 1.0.
-    - If there is a need to access the content of the repository to answer the query set the intent technical with potential files which can have the required content to answer.
     """),
         ("user",
          """
     Repository file paths:
     {file_paths}
-    
+
     User query:
     {query}
-    
-    Decide:
-    1. Is the intent "general" or "technical"?
-    2. If technical, which files are relevant?
-    3. If general, provide a direct answer.
-    4. Intent should be technical if query is about repository and need repository details to answer.
-    5.- If there is a need to access the content of the repository to answer the query set the intent technical with potential files which can have the required content to answer.
-    Return ONLY valid JSON matching the schema.
 
-    
+    **Task:**
+    1. Analyze the query. Does it ask to FIND content or EXPLAIN code in this repo? If yes -> "technical".
+    2. Does it contain specific text/quotes the user wants to locate? If yes -> "technical" (select files likely to contain text, like .md, .txt, .html, or source code).
+    3. If technical, output the list of relevant `files`.
+    4. If general, provide a `answer`.
+
+    Return ONLY valid JSON matching the schema.
     """)
     ]
 )
