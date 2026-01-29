@@ -175,6 +175,7 @@ class GraphBuilder:
         :param commit_id:
         :return:
         """
+        UPSERT_BATCH_SIZE = 100
         structure = {}
         await self.get_tree(repo_url,github_token)
         #------------------------------------get nodes for files and folder in repo ----------------------------------------------------
@@ -259,7 +260,16 @@ class GraphBuilder:
                                 payload = payload
                             ))
                         n_files += 1 
-
+                        
+                        if len(points) >= UPSERT_BATCH_SIZE:
+                            try: 
+                                qdrant_client.upsert(
+                                        collection_name="repo_knowledge",
+                                        points = points
+                                    )
+                                points = []
+                            except Exception as e:
+                                print(f"Error while uploading chunks into qdrant as {e}")
                     #------------------If it is python file parse the code and get function_calls,class_def ,function_def and import------------------------------
                     if path.endswith(".py"):
                         try:
@@ -283,10 +293,13 @@ class GraphBuilder:
 
 
         if points:
-            qdrant_client.upsert(
-                collection_name="repo_knowledge",
-                points = points
-            )
+            try:
+                qdrant_client.upsert(
+                    collection_name="repo_knowledge",
+                    points = points
+                )
+            except Exception as e:
+                print(f"Error while uploading chunks into qdrant as {e}")
         redis_conn.set(f"repo_details:{repo_url}",json.dumps({"files_list": self.nodes,"owner":self.owner,"commit_id":commit_id,"repo_name":self.repo,"links": self.links}),nx = True)
         return {"structure": structure,"nodes":self.nodes,"owner":self.owner,"Repo_name":self.repo,"links": self.links}
 
