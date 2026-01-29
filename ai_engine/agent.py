@@ -99,9 +99,9 @@ def rerank_chunks(hits, query,selected_files,confidence_score,top_k = 8):
             0.20 * file_score +
             0.10 * keyword_score
         )
-        reranked.append((final_score,payload["text"]))
+        reranked.append((final_score,payload["text"],payload["path"]))
     reranked.sort(key= lambda x : x[0], reverse = True )
-    return [text for _,text in reranked[:top_k]]
+    return [ f" file_ path : {path} file_code: {text}" for _,text,path in reranked[:top_k]]
 
 
 @traceable(name="context_sync")
