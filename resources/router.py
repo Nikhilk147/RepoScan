@@ -60,11 +60,11 @@ router_prompt = ChatPromptTemplate.from_messages(
     User query:
     {query}
 
-    **Task:**
+    ##Note:
     1. Analyze the query. Does it ask to FIND content or EXPLAIN code in this repo? If yes -> "technical".
     2. Does it contain specific text/quotes the user wants to locate? If yes -> "technical" (select files likely to contain text, like .md, .txt, .html, or source code).
     3. If technical, output the list of relevant `files`.
-    4. If general, provide a `answer`.
+    4. If general, provide a `answer` to the query.
 
     Return ONLY valid JSON matching the schema.
     """)
