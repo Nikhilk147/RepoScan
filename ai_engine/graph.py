@@ -135,7 +135,7 @@ class GraphBuilder:
             self.id_counter +=1
 
 
-            for item in self.tree_data[:100]:
+            for item in self.tree_data:
                 path = item["path"]
                 is_folder = item["type"] == "tree"
                 node_id = self.id_counter
@@ -193,11 +193,11 @@ class GraphBuilder:
             self.id_counter +=1
             n_files = 0
 
-            for item in self.tree_data[:100]:
+            for item in self.tree_data:
                 path = item["path"]
                 is_folder = item["type"] == "tree"
                 node_id = self.id_counter
-                if is_folder:
+                if not is_folder:
                     n_files +=1
                 self.nodes.append({
                     "id": node_id,
@@ -226,7 +226,8 @@ class GraphBuilder:
         create_collection()
         chunker = get_chunk_code()
         points = []
-        for item in self.tree_data[:100]:
+        n_files = 0
+        for item in self.tree_data:
             path = item["path"]
 
             if item["type"] == "blob":
@@ -235,7 +236,8 @@ class GraphBuilder:
                 code_content = response.text
                 if response.text == "":
                     continue
-
+                if n_files > 100:
+                    break
 
                 try:
                     # --------Encodes, chunks code in file and creates point for every chunk-------------------------------------------------
@@ -256,7 +258,7 @@ class GraphBuilder:
                                 vector = embedding,
                                 payload = payload
                             ))
-
+                        n_files += 1 
 
                     #------------------If it is python file parse the code and get function_calls,class_def ,function_def and import------------------------------
                     if path.endswith(".py"):
