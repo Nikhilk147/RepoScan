@@ -65,6 +65,7 @@ router_prompt = ChatPromptTemplate.from_messages(
     2. Does it contain specific text/quotes the user wants to locate? If yes -> "technical" (select files likely to contain provided text by user.).
     3. If technical, output the list of potential `files` which could help answer user query.
     4. If general, provide a `answer` to the query.
+    5. If user wants some line or code to be searched in the repository/file. Intent should be technical with potential files which can have the required context from repository.
 
     Return ONLY valid JSON matching the schema.
     """)
