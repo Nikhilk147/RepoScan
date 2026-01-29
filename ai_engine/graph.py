@@ -214,8 +214,8 @@ class GraphBuilder:
                     parent_id = root_id
                 self.links.append({"source": parent_id,"target": node_id})
                 self.id_counter+=1
-            if n_files > 100:
-                return False
+            # if n_files > 100:
+            #     return False
         except Exception as e:
             print(f"Graph Generation Failed:{e}")
             return None
