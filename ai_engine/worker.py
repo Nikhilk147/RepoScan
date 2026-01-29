@@ -146,7 +146,7 @@ def cleanup_resources(job_details, reason="Finished"):
             repo_id = supabase.table("chat_sessions").select("repository_id").eq("id",session_id).eq("user_id",user_id).single().execute().data["repository_id"]
             repo = supabase.table("repositories").select("n_sessions").eq("id",repo_id).single().execute().data["n_sessions"]
             if repo == 1:
-                supabase.table("repositories").delete().eq("id",repo_id).eq("user_id",user_id).execute()
+                supabase.table("repositories").delete().eq("id",repo_id).execute()
                 supabase.table("chat_sessions").delete().eq("id",session_id).execute()
                 repo_url = job_details["url"]
                 clean_url = repo_url.rstrip("/")
