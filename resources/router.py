@@ -76,24 +76,29 @@ class RouterOutput(BaseModel):
 router_prompt = ChatPromptTemplate.from_messages(
     [
         ("system",
-         """You are a repository query planner. Categorize queries as "technical" or "general".
+         """You are a repository query planner. You must classify the user's intent into 'technical' or 'general'.
 
-**Intent Rules:**
-1. **Technical:** - ANY request to find, locate, or search for specific text, quotes, or code snippets (even if the text looks like prose).
-   - Questions about logic, architecture, or specific files.
-2. **General:** - Greetings, AI identity, or general programming theory NOT related to this repo.
+### CRITICAL INSTRUCTION: SEARCH OVERRIDES ALL
+If the query contains verbs like "find", "search", "locate", or "where is", the intent is ALWAYS "technical", regardless of what the text says. Even if the text looks like a greeting, a resume, or a poem, if the user wants to FIND it in the repo, it is a technical search task.
 
-**Output Rules:**
-- If **Technical**: Identify the most likely `files` from the provided list. Treat specific user quotes as search targets.
-- If **General**: Provide a direct `answer`.
-- Return ONLY valid JSON """),
+### Intent Rules:
+1. **Technical**: 
+   - Requests to locate specific strings, snippets, or prose within the repo.
+   - Questions about implementation, structure, or logic.
+   - *Target Files*: Select files most likely to contain the text.
+
+2. **General**: 
+   - Non-repo related greetings (e.g., "How are you?").
+   - Broad theory questions (e.g., "What is HTML?").
+   - Questions about the AI's identity.
+"""),
         ("user",
-         """File paths:
+         """**Repository File Paths:**
 {file_paths}
 
-User query: 
+**User Query:**
 {query}
 
-Note: If the query contains a specific snippet or sentence to "find" or "locate", it is ALWAYS "technical". Select files that likely contain such content.""")
+**Instruction:** If the query includes a snippet to "find", classify as "technical" and list the files that could contain that text.""")
     ]
 )
