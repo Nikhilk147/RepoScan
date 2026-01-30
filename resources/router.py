@@ -86,7 +86,7 @@ router_prompt = ChatPromptTemplate.from_messages(
 **Output Rules:**
 - If **Technical**: Identify the most likely `files` from the provided list. Treat specific user quotes as search targets.
 - If **General**: Provide a direct `answer`.
-- Return ONLY valid JSON ),
+- Return ONLY valid JSON """),
         ("user",
          """File paths:
 {file_paths}
